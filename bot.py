@@ -15,15 +15,22 @@ parser = ConfigParser()
 parser.read("configs.ini")
 
 # Get values from the config file
+testing = bool(parser["DEFAULTS"].get("testing"))
+
 token = parser["DEFAULTS"].get("TOKEN")
+test_token = parser["DEFAULTS"].get("TEST_TOKEN")
+
 api_key = parser["DEFAULTS"].get("API_KEY")
 max_size = int(parser["DEFAULTS"].get("max_size"))
 delay = int(parser["DEFAULTS"].get("delay"))
-bot_name = parser["DEFAULTS"].get("bot_name")
 
+test_bot_name = parser["DEFAULTS"].get("test_bot_name")
+bot_name = parser["DEFAULTS"].get("bot_name") if not testing else test_bot_name
+
+test_image_url = "https://t4.ftcdn.net/jpg/03/03/62/45/360_F_303624505_u0bFT1Rnoj8CMUSs8wMCwoKlnWlh5Jiq.jpg"
 
 # Initialize the telebot and OpenaiClient
-bot = telebot.TeleBot(token)
+bot = telebot.TeleBot(test_token if testing else token)
 client = OpenaiClient(api_key)
 
 # Dictionary to store game data
@@ -68,7 +75,9 @@ def start(message: Message):
 
                     # Check if a game is already in progress for the group ID
                     if games.get(str(group_id)) is not None:
-                        bot.send_message(message.chat.id, "❌ Игра уже идет!")
+                        bot.send_message(
+                            message.chat.id, "❌ Игра уже идет или вы уже в очереди!"
+                        )
                     else:
                         # Prompt the user to send a word to be guessed
                         answer_message = bot.send_message(
@@ -120,7 +129,7 @@ def play(message: Message):
                 # Send a message indicating that a game is already in progress
                 bot.send_message(
                     message.chat.id,
-                    f"❌ Игра уже идет!",
+                    f"❌ Игра уже идет или вы уже в очереди!",
                     parse_mode="Markdown",
                 )
         else:
@@ -139,27 +148,25 @@ def play(message: Message):
 
 
 def from_queue_processing(request: tuple):
-    answer, group_id, dms_id, user_nick = request
+    answer, group_id, dms_id, user_nick, message_queue_id, user_id = request
 
     logging.info(f"{answer} | {group_id}")
 
-    games[str(group_id)] = [
-        answer,
-        {},
-        "",
-        {},
-    ]
+    bot.delete_message(dms_id, message_queue_id)
+
+    games[str(group_id)] = [answer, {}, "", {}, ""]
 
     image_generation = bot.send_message(
         dms_id,
-        f"Картинка '{answer}' генерируется 😎",
+        f'Картинка "*{answer}*" генерируется 😎',
+        parse_mode="Markdown",
     )
-    url = client.generate_image(answer)
+    url = client.generate_image(answer) if not testing else (200, test_image_url)
     if url[0] == 200:
         bot.send_photo(
             group_id,
             url[1],
-            f"Пользователь *{user_nick}* загадал слово! Пишите свои ответы в формате `/guess ответ` в этом чате!",
+            f"Пользователь *{user_nick}* загадал слово!\nПишите свои ответы в формате `/guess ответ` в этом чате!\nЧтобы остановить игру, напишите `/stop`.",
             parse_mode="Markdown",
         )
         bot.delete_message(dms_id, image_generation.message_id)
@@ -168,10 +175,12 @@ def from_queue_processing(request: tuple):
             {},
             url[1],
             {},
+            user_id,
         ]
         bot.send_message(
             dms_id,
-            f"Ваше слово '{answer}' успешно загадано! ✅ Перейдите обратно в группу.",
+            f'Ваше слово "*{answer}*" успешно загадано! ✅ Перейдите обратно в группу.',
+            parse_mode="Markdown",
         )
 
         logging.info(f"game in {group_id} started")
@@ -194,7 +203,7 @@ def start_word_picking(message: Message, group_id: int):
     try:
         # Check if a game is already in progress
         if games.get(str(group_id)) is not None:
-            bot.send_message(message.chat.id, "❌ Игра уже идет!")
+            bot.send_message(message.chat.id, "❌ Игра уже идет или вы уже в очереди!")
         else:
             answer = message.text.strip().lower()
             # Check if the answer is a single word
@@ -206,38 +215,37 @@ def start_word_picking(message: Message, group_id: int):
                     if client.exist(answer_embedding):
                         logging.info(f"{answer} | {group_id}")
 
-                        games[str(group_id)] = [
-                            answer,
-                            {},
-                            "",
-                            {},
-                        ]
+                        games[str(group_id)] = [answer, {}, "", {}, ""]
 
                         lenght = get_queue_length() + 1
                         if lenght > max_size:
                             bot.send_message(
                                 message.chat.id,
-                                f"К сожалению, очередь заполнена. Эта игра завершится.",
+                                f"❌ К сожалению, очередь переполнена. Эта игра завершится.",
                             )
                             bot.send_message(
                                 group_id,
-                                f"К сожалению, очередь заполнена. Эта игра завершится.",
+                                f"❌ К сожалению, очередь переполнена. Эта игра завершится.",
                             )
                             games.pop(str(group_id))
 
                         else:
+                            if lenght > 0:
+                                queue_message = bot.send_message(
+                                    message.chat.id,
+                                    f"⌛ Вы добавлены в очередь.\nПримерное время ожидания: *{(lenght * delay) // 60}* мин.",
+                                    parse_mode="Markdown",
+                                )
+
                             add_request_to_queue(
                                 answer,
                                 group_id,
                                 message.chat.id,
                                 message.from_user.full_name,
+                                queue_message.id,
+                                message.from_user.id,
                             )
 
-                            if lenght > 0:
-                                bot.send_message(
-                                    message.chat.id,
-                                    f"Вы добавлены в очередь.\nПримерное время ожидания {(lenght * delay) // 60} мин",
-                                )
                     else:
                         bot.send_message(
                             message.chat.id,
@@ -302,81 +310,90 @@ def guess(message: Message):
             if not message.chat.type == "private":
                 param = get_parameter(message.text)
                 if param:
-                    if contains_only_english_letters(param):
-                        given_try = param.lower().strip()
-                        correct_answer = games[str(group_id)][0].lower().strip()
-                        if correct_answer == given_try:
-                            if games.get(str(group_id)) is not None:
-                                games[str(group_id)][3][
-                                    message.from_user.first_name
-                                ] = games[str(group_id)][3].get(
-                                    message.from_user.first_name, []
-                                ) + [
-                                    100
-                                ]
-                                top_final("10", message.chat.id)
-                                scoreboard_final(message.chat.id)
-                                if (
-                                    len(
-                                        games[str(group_id)][3][
-                                            message.from_user.first_name
-                                        ]
-                                    )
-                                    == 1
-                                ):
-                                    bot.send_message(
-                                        group_id,
-                                        f"🎉 *{message.from_user.full_name}* молодец! Ты отгадал слово *{correct_answer}* с первой попытки! Вот это мастерство! 🤯",
-                                        parse_mode="Markdown",
-                                    )
+                    if games[str(group_id)][2] != "":
+                        if contains_only_english_letters(param):
+                            given_try = param.lower().strip()
+                            correct_answer = games[str(group_id)][0].lower().strip()
+                            if correct_answer == given_try:
+                                if games.get(str(group_id)) is not None:
+                                    games[str(group_id)][3][
+                                        str(message.from_user.id)
+                                    ] = games[str(group_id)][3].get(
+                                        str(message.from_user.id), []
+                                    ) + [
+                                        100
+                                    ]
+                                    top_final("10", message.chat.id)
+                                    scoreboard_final(message.chat.id)
+                                    if (
+                                        len(
+                                            games[str(group_id)][3][
+                                                str(message.from_user.id)
+                                            ]
+                                        )
+                                        == 1
+                                    ):
+                                        bot.send_message(
+                                            group_id,
+                                            f"🎉 *{message.from_user.full_name}* молодец! Ты отгадал слово *{correct_answer}* с первой попытки! Вот это мастерство! 🤯",
+                                            parse_mode="Markdown",
+                                        )
+                                    else:
+                                        bot.send_message(
+                                            group_id,
+                                            f"🎉 *{message.from_user.full_name}* отгадал слово *{correct_answer}*! Игра заканчивается.",
+                                            parse_mode="Markdown",
+                                        )
+                                    if str(group_id) in games.keys():
+                                        games.pop(str(group_id))
                                 else:
                                     bot.send_message(
+                                        message.chat.id,
+                                        "❌ Сейчас не идет никакая игра!",
+                                    )
+                            else:
+                                correct_embedding = client.get_embedding(correct_answer)
+                                given_try_embedding = client.get_embedding(given_try)
+
+                                if client.exist(given_try_embedding):
+                                    div = client.cosine_similarity(
+                                        correct_embedding, given_try_embedding
+                                    )
+                                    bot.send_message(
                                         group_id,
-                                        f"🎉 *{message.from_user.full_name}* отгадал слово *{correct_answer}*! Игра заканчивается.",
+                                        f"Ответ *{message.from_user.full_name}* близок к правильному на *{round(div * 100, 2)}%*",
                                         parse_mode="Markdown",
                                     )
-                                games.pop(str(group_id))
-                            else:
-                                bot.send_message(
-                                    message.chat.id, "❌ Сейчас не идет никакая игра!"
-                                )
+                                    if games.get(str(group_id)) is not None:
+                                        games[str(group_id)][1][
+                                            given_try
+                                        ] = f"{round(div * 100, 2)}%"
+
+                                        games[str(group_id)][3][
+                                            str(message.from_user.id)
+                                        ] = games[str(group_id)][3].get(
+                                            str(message.from_user.id), []
+                                        ) + [
+                                            round(div * 100, 2)
+                                        ]
+
+                                else:
+                                    bot.send_message(
+                                        message.chat.id,
+                                        f"❌ *{message.from_user.full_name}*, такого слова не существует!",
+                                        parse_mode="Markdown",
+                                    )
+
                         else:
-                            correct_embedding = client.get_embedding(correct_answer)
-                            given_try_embedding = client.get_embedding(given_try)
-
-                            if client.exist(given_try_embedding):
-                                div = client.cosine_similarity(
-                                    correct_embedding, given_try_embedding
-                                )
-                                bot.send_message(
-                                    group_id,
-                                    f"Ответ *{message.from_user.full_name}* близок к правильному на *{round(div * 100, 2)}%*",
-                                    parse_mode="Markdown",
-                                )
-                                if games.get(str(group_id)) is not None:
-                                    games[str(group_id)][1][
-                                        given_try
-                                    ] = f"{round(div * 100, 2)}%"
-
-                                    games[str(group_id)][3][
-                                        message.from_user.first_name
-                                    ] = games[str(group_id)][3].get(
-                                        message.from_user.first_name, []
-                                    ) + [
-                                        round(div * 100, 2)
-                                    ]
-
-                            else:
-                                bot.send_message(
-                                    message.chat.id,
-                                    f"❌ *{message.from_user.full_name}*, такого слова не существует!",
-                                    parse_mode="Markdown",
-                                )
-
+                            bot.send_message(
+                                message.chat.id,
+                                f"❌ *{message.from_user.full_name}*, отгадка должна быть на английском языке и состоять только из букв!",
+                                parse_mode="Markdown",
+                            )
                     else:
                         bot.send_message(
                             message.chat.id,
-                            f"❌ *{message.from_user.full_name}*, отгадка должна быть на английском языке и состоять только из букв!",
+                            f"❌ Не спеши! Картинка еще генерируется, или вы в очереди.",
                             parse_mode="Markdown",
                         )
                 else:
@@ -484,25 +501,78 @@ def top_final(amount: str, id: int):
         bot.send_message(id, output, parse_mode="Markdown")
 
 
-def scoreboard_final(id: int):
-    players = games[str(id)][3]
+def scoreboard_final(group_id: int):
+    players = games[str(group_id)][3]
 
     output_list = []
     for elem in players.items():
-        output_list.append([elem[0], len(elem[1]), sum(elem[1]) / len(elem[1])])
+        output_list.append(
+            [
+                bot.get_chat_member(group_id, str(elem[0])).user.first_name,
+                len(elem[1]),
+                sum(elem[1]) / len(elem[1]),
+            ]
+        )
 
     output_list.sort(key=lambda x: x[2], reverse=True)
 
     result = "Статистика по пользователям (количество угадываний, средний показатель совпадения):\n\n"
 
-    max_nick = max(players.keys(), key=lambda x: (len(x) + len(str(players[x][0]))))
+    max_id = max(
+        players.keys(),
+        key=lambda x: (
+            len(bot.get_chat_member(group_id, str(x)).user.first_name)
+            + len(str(players[x][0]))
+        ),
+    )
 
-    max_len = len(max_nick) + len(str(len(players[max_nick])))
+    max_len = len(bot.get_chat_member(group_id, str(max_id)).user.first_name) + len(
+        str(len(players[str(max_id)]))
+    )
 
     for elem in output_list:
+        print(elem)
         result += f"`{elem[0]}: {' ' * (max_len - len(elem[0]) - len(str(elem[1])))}{elem[1]} | {round(elem[2])}%`\n"
 
-    bot.send_message(id, result, parse_mode="Markdown")
+    bot.send_message(group_id, result, parse_mode="Markdown")
+
+
+@bot.message_handler(commands=["stop"])
+def stop(message: Message):
+    try:
+        if not message.chat.type == "private":
+            if games.get(str(message.chat.id)) != None:
+                if message.from_user.id == int(games[str(message.chat.id)][4]):
+                    games.pop(str(message.chat.id))
+                    bot.send_message(
+                        message.chat.id,
+                        f"🛑 Игра остановлена! Её остановил *{message.from_user.full_name}*.",
+                        parse_mode="Markdown",
+                    )
+                else:
+                    bot.send_message(
+                        message.chat.id,
+                        f"❌ Эту команду может использовать только создатель игры!",
+                        parse_mode="Markdown",
+                    )
+            else:
+                bot.send_message(
+                    message.chat.id,
+                    f"❌ *{message.from_user.full_name}*, игра в данный момент не идет",
+                    parse_mode="Markdown",
+                )
+        else:
+            # Send a message indicating that the command can only be used in a group chat
+            bot.send_message(
+                message.chat.id,
+                "❌ Эту команду можно использовать только в групповом чате!",
+            )
+    except Exception as e:
+        bot.send_message(
+            message.chat.id,
+            f"⛔️ Возникла ошибка, пожалуйста, сообщите об этом @FoxFil\n\nОшибка:\n\n`{e}`",
+            parse_mode="Markdown",
+        )
 
 
 start_thread(f=from_queue_processing, logger=logger, delay=delay)
