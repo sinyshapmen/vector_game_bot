@@ -13,7 +13,7 @@ class OpenaiClient:
         self.__api_key = api_key
         self.__client = OpenAI(api_key=self.__api_key)
         self.__glove = torchtext.vocab.GloVe(
-            name="42B", dim=300  # trained on Wikipedia 2014 corpus of 42 billion words
+            name="6B", dim=50  # trained on Wikipedia 2014 corpus of 6 billion words
         )
 
     def generate_image(

@@ -8,19 +8,28 @@ from telebot.types import (
     InlineKeyboardMarkup,
     Message,
 )
+from queue_bot import start_thread, add_request_to_queue, get_queue_length
 
+# Initialize the ConfigParser
 parser = ConfigParser()
 parser.read("configs.ini")
 
+# Get values from the config file
 token = parser["DEFAULTS"].get("TOKEN")
 api_key = parser["DEFAULTS"].get("API_KEY")
+max_size = int(parser["DEFAULTS"].get("max_size"))
+delay = int(parser["DEFAULTS"].get("delay"))
+bot_name = parser["DEFAULTS"].get("bot_name")
 
 
+# Initialize the telebot and OpenaiClient
 bot = telebot.TeleBot(token)
 client = OpenaiClient(api_key)
 
+# Dictionary to store game data
 games = {}
 
+# Configure logging settings
 logging.basicConfig(filename="logs.log", format="%(asctime)s %(message)s", filemode="w")
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -40,32 +49,44 @@ def get_parameter(text):
 @bot.message_handler(commands=["start", "help"])
 def start(message: Message):
     try:
+        # Get the parameter from the message text
         param = get_parameter(message.text)
+
+        # Check if the parameter is empty
         if not param:
+            # Send a welcome message with instructions
             bot.send_message(
                 message.chat.id,
                 "👋 Привет! Я - бот, с помощью которого можно загадывать слова, чтобы твои друзья их отгадывали. Я буду давать им подсказки и указывать, насколько они близки к правильному слову. Чтобы загадать слово, напиши в группе /play. (Играть надо на английском языке)",
             )
         else:
+            # Check if the message is sent in a private chat
             if message.chat.type == "private":
                 if param.startswith("pick"):
+                    # Extract the group ID from the parameter
                     group_id = param[4:]
+
+                    # Check if a game is already in progress for the group ID
                     if games.get(str(group_id)) is not None:
                         bot.send_message(message.chat.id, "❌ Игра уже идет!")
                     else:
+                        # Prompt the user to send a word to be guessed
                         answer_message = bot.send_message(
                             message.chat.id,
                             "Отправь мне слово, которое хочешь загадать! 😨",
                         )
+                        # Register a handler for the next message to start word picking
                         bot.register_next_step_handler(
                             answer_message, start_word_picking, int(group_id)
                         )
             else:
+                # Send an error message if the command with parameter is used in a group chat
                 bot.send_message(
                     message.chat.id,
                     "❌ Команду с параметром можно использовать только в личных сообщениях!",
                 )
     except Exception as e:
+        # Send an error message if an exception occurs
         bot.send_message(
             message.chat.id,
             f"⛔ Возникла ошибка, пожалуйста, сообщите об этом @FoxFil\n\nОшибка:\n\n`{e}`",
@@ -76,8 +97,11 @@ def start(message: Message):
 @bot.message_handler(commands=["play"])
 def play(message: Message):
     try:
+        # Check if the message is in a private chat
         if not message.chat.type == "private":
+            # Check if a game is already in progress for the chat
             if games.get(str(message.chat.id)) is None:
+                # Send a message with a button to start the game
                 bot.send_message(
                     message.chat.id,
                     "Чтобы загадать слово, нажми на кнопку ниже! 😁",
@@ -86,24 +110,27 @@ def play(message: Message):
                             [
                                 InlineKeyboardButton(
                                     text="Загадать!",
-                                    url=f"https://t.me/VectorGame_bot?start=pick{message.chat.id}",
+                                    url=f"https://t.me/{bot_name}?start=pick{message.chat.id}",
                                 )
                             ],
                         ]
                     ),
                 )
             else:
+                # Send a message indicating that a game is already in progress
                 bot.send_message(
                     message.chat.id,
                     f"❌ Игра уже идет!",
                     parse_mode="Markdown",
                 )
         else:
+            # Send a message indicating that the command can only be used in a group chat
             bot.send_message(
                 message.chat.id,
                 "❌ Эту команду можно использовать только в групповом чате!",
             )
     except Exception as e:
+        # Send a message indicating that an error occurred
         bot.send_message(
             message.chat.id,
             f"⛔ Возникла ошибка, пожалуйста, сообщите об этом @FoxFil\n\nОшибка:\n\n`{e}`",
@@ -111,15 +138,71 @@ def play(message: Message):
         )
 
 
+def from_queue_processing(request: tuple):
+    answer, group_id, dms_id, user_nick = request
+
+    logging.info(f"{answer} | {group_id}")
+
+    games[str(group_id)] = [
+        answer,
+        {},
+        "",
+        {},
+    ]
+
+    image_generation = bot.send_message(
+        dms_id,
+        f"Картинка '{answer}' генерируется 😎",
+    )
+    url = client.generate_image(answer)
+    if url[0] == 200:
+        bot.send_photo(
+            group_id,
+            url[1],
+            f"Пользователь *{user_nick}* загадал слово! Пишите свои ответы в формате `/guess ответ` в этом чате!",
+            parse_mode="Markdown",
+        )
+        bot.delete_message(dms_id, image_generation.message_id)
+        games[str(group_id)] = [
+            answer,
+            {},
+            url[1],
+            {},
+        ]
+        bot.send_message(
+            dms_id,
+            f"Ваше слово '{answer}' успешно загадано! ✅ Перейдите обратно в группу.",
+        )
+
+        logging.info(f"game in {group_id} started")
+    else:
+        games.pop(str(group_id))
+        bot.delete_message(dms_id, image_generation.message_id)
+        bot.send_message(
+            dms_id,
+            f"❌ Ошибка генерации: `{url[1]}`",
+            parse_mode="Markdown",
+        )
+        bot.send_message(
+            group_id,
+            f"❌ Ошибка генерации. Начните игру заново: `{url[1]}`",
+            parse_mode="Markdown",
+        )
+
+
 def start_word_picking(message: Message, group_id: int):
     try:
+        # Check if a game is almessageready in progress
         if games.get(str(group_id)) is not None:
             bot.send_message(message.chat.id, "❌ Игра уже идет!")
         else:
             answer = message.text.strip().lower()
+            # Check if the answer is a single word
             if not len(answer.split()) > 1:
+                # Check if the answer contains only English letters
                 if contains_only_english_letters(answer):
                     answer_embedding = client.get_embedding(answer)
+                    # Check if the answer exists in the embeddings
                     if client.exist(answer_embedding):
                         logging.info(f"{answer} | {group_id}")
 
@@ -130,48 +213,31 @@ def start_word_picking(message: Message, group_id: int):
                             {},
                         ]
 
-                        image_generation = bot.send_message(
-                            message.chat.id,
-                            "Картинка генерируется 😎",
-                        )
-                        url = client.generate_image(answer)
-                        if url[0] == 200:
-                            bot.send_photo(
-                                group_id,
-                                url[1],
-                                f"Пользователь *{message.from_user.full_name}* загадал слово! Пишите свои ответы в формате `/guess ответ` в этом чате!",
-                                parse_mode="Markdown",
-                            )
-                            bot.delete_message(
-                                message.chat.id, image_generation.message_id
-                            )
-                            games[str(group_id)] = [
-                                answer,
-                                {},
-                                url[1],
-                                {},
-                            ]
+                        lenght = get_queue_length() + 1
+                        if lenght > max_size:
                             bot.send_message(
                                 message.chat.id,
-                                "Ваше слово успешно загадано! ✅ Перейдите обратно в группу.",
+                                f"К сожалению, очередь заполнена. Эта игра завершится.",
+                            )
+                            bot.send_message(
+                                group_id,
+                                f"К сожалению, очередь заполнена. Эта игра завершится.",
+                            )
+                            games.pop(str(group_id))
+
+                        else:
+                            add_request_to_queue(
+                                answer,
+                                group_id,
+                                message.chat.id,
+                                message.from_user.full_name,
                             )
 
-                            logging.info(f"game in {group_id} started")
-                        else:
-                            games.pop(str(group_id))
-                            bot.delete_message(
-                                message.chat.id, image_generation.message_id
-                            )
-                            bot.send_message(
-                                message.chat.id,
-                                f"❌ Ошибка генерации: `{url[1]}`",
-                                parse_mode="Markdown",
-                            )
-                            bot.send_message(
-                                group_id,
-                                f"❌ Ошибка генерации. Начните игру заново: `{url[1]}`",
-                                parse_mode="Markdown",
-                            )
+                            if lenght > 0:
+                                bot.send_message(
+                                    message.chat.id,
+                                    f"Вы добавлены в очередь.\nПримерное время ожидания {(lenght * delay) // 60} мин",
+                                )
                     else:
                         bot.send_message(
                             message.chat.id,
@@ -181,7 +247,7 @@ def start_word_picking(message: Message, group_id: int):
                                     [
                                         InlineKeyboardButton(
                                             text="Загадать заново!",
-                                            url=f"https://t.me/VectorGame_bot?start=pick{group_id}",
+                                            url=f"https://t.me/{bot_name}?start=pick{group_id}",
                                         )
                                     ],
                                 ]
@@ -196,7 +262,7 @@ def start_word_picking(message: Message, group_id: int):
                                 [
                                     InlineKeyboardButton(
                                         text="Загадать заново!",
-                                        url=f"https://t.me/VectorGame_bot?start=pick{group_id}",
+                                        url=f"https://t.me/{bot_name}?start=pick{group_id}",
                                     )
                                 ],
                             ]
@@ -211,7 +277,7 @@ def start_word_picking(message: Message, group_id: int):
                             [
                                 InlineKeyboardButton(
                                     text="Загадать заново!",
-                                    url=f"https://t.me/VectorGame_bot?start=pick{group_id}",
+                                    url=f"https://t.me/{bot_name}?start=pick{group_id}",
                                 )
                             ],
                         ]
@@ -439,4 +505,5 @@ def scoreboard_final(id: int):
     bot.send_message(id, result, parse_mode="Markdown")
 
 
+start_thread(f=from_queue_processing, logger=logger, delay=delay)
 bot.infinity_polling()
