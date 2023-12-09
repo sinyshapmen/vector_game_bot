@@ -192,7 +192,7 @@ def from_queue_processing(request: tuple):
 
 def start_word_picking(message: Message, group_id: int):
     try:
-        # Check if a game is almessageready in progress
+        # Check if a game is already in progress
         if games.get(str(group_id)) is not None:
             bot.send_message(message.chat.id, "❌ Игра уже идет!")
         else:
