@@ -14,7 +14,12 @@ def add_request_to_queue(
     full_name: str,
     message_queue_id: str,
     user_id: str,
+    logger,
 ):
+    logger.info(
+        f"Adding request: ans {answer} | g_id {group_id} | user {user_id} | q_len {len(request_queue) + 1}"
+    )
+
     request_queue.append(
         (answer, group_id, chat_id, full_name, message_queue_id, user_id)
     )
@@ -36,7 +41,7 @@ def process_requests(f, logger, delay):
 
             if logger is not None:
                 logger.info(
-                    f"Processing request: {answer}, {group_id}, {chat_id}, {full_name}, {message_queue_id}, {user_id}"
+                    f"Processing request: ans {answer} | g_id {group_id} | user {user_id}"
                 )
 
             request_queue.pop(0)

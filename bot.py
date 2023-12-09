@@ -39,7 +39,7 @@ games = {}
 # Configure logging settings
 logging.basicConfig(filename="logs.log", format="%(asctime)s %(message)s", filemode="w")
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 def contains_only_english_letters(word):
@@ -101,6 +101,7 @@ def start(message: Message):
             f"⛔ Возникла ошибка, пожалуйста, сообщите об этом @FoxFil\n\nОшибка:\n\n`{e}`",
             parse_mode="Markdown",
         )
+        logger.error(f"ERROR: {e}")
 
 
 @bot.message_handler(commands=["play"])
@@ -145,12 +146,11 @@ def play(message: Message):
             f"⛔ Возникла ошибка, пожалуйста, сообщите об этом @FoxFil\n\nОшибка:\n\n`{e}`",
             parse_mode="Markdown",
         )
+        logger.error(f"ERROR: {e}")
 
 
 def from_queue_processing(request: tuple):
     answer, group_id, dms_id, user_nick, message_queue_id, user_id = request
-
-    logging.info(f"{answer} | {group_id}")
 
     bot.delete_message(dms_id, message_queue_id)
 
@@ -183,7 +183,6 @@ def from_queue_processing(request: tuple):
             parse_mode="Markdown",
         )
 
-        logging.info(f"game in {group_id} started")
     else:
         games.pop(str(group_id))
         bot.delete_message(dms_id, image_generation.message_id)
@@ -213,7 +212,7 @@ def start_word_picking(message: Message, group_id: int):
                     answer_embedding = client.get_embedding(answer)
                     # Check if the answer exists in the embeddings
                     if client.exist(answer_embedding):
-                        logging.info(f"{answer} | {group_id}")
+                        logging.info(f"Game started | ans: {answer} | g_id: {group_id}")
 
                         games[str(group_id)] = [answer, {}, "", {}, ""]
 
@@ -244,6 +243,7 @@ def start_word_picking(message: Message, group_id: int):
                                 message.from_user.full_name,
                                 queue_message.id,
                                 message.from_user.id,
+                                logger,
                             )
 
                     else:
@@ -297,6 +297,7 @@ def start_word_picking(message: Message, group_id: int):
             f"⛔ Возникла ошибка, пожалуйста, сообщите об этом @FoxFil\n\nОшибка:\n\n`{e}`",
             parse_mode="Markdown",
         )
+        logger.error(f"ERROR: {e}")
 
 
 @bot.message_handler(commands=["guess"])
@@ -346,6 +347,8 @@ def guess(message: Message):
                                         )
                                     if str(group_id) in games.keys():
                                         games.pop(str(group_id))
+
+                                    logger.info(f"Game ended | g_id: {group_id}")
                                 else:
                                     bot.send_message(
                                         message.chat.id,
@@ -354,6 +357,10 @@ def guess(message: Message):
                             else:
                                 correct_embedding = client.get_embedding(correct_answer)
                                 given_try_embedding = client.get_embedding(given_try)
+
+                                logger.info(
+                                    f"Get {given_try} from {message.from_user.id} | {group_id}"
+                                )
 
                                 if client.exist(given_try_embedding):
                                     div = client.cosine_similarity(
@@ -408,6 +415,7 @@ def guess(message: Message):
                     "❌ Эту команду можно использовать только в групповом чате!",
                 )
     except Exception as e:
+        logger.error(f"ERROR: {e}")
         bot.send_message(
             message.chat.id,
             f"⛔ Возникла ошибка, пожалуйста, сообщите об этом @FoxFil\n\nОшибка:\n\n`{e}`",
@@ -478,6 +486,7 @@ def top(message: Message):
             f"⛔️ Возникла ошибка, пожалуйста, сообщите об этом @FoxFil\n\nОшибка:\n\n`{e}`",
             parse_mode="Markdown",
         )
+        logger.error(f"ERROR: {e}")
 
 
 def top_final(amount: str, id: int):
@@ -531,7 +540,6 @@ def scoreboard_final(group_id: int):
     )
 
     for elem in output_list:
-        print(elem)
         result += f"`{elem[0]}: {' ' * (max_len - len(elem[0]) - len(str(elem[1])))}{elem[1]} | {round(elem[2])}%`\n"
 
     bot.send_message(group_id, result, parse_mode="Markdown")
@@ -573,6 +581,7 @@ def stop(message: Message):
             f"⛔️ Возникла ошибка, пожалуйста, сообщите об этом @FoxFil\n\nОшибка:\n\n`{e}`",
             parse_mode="Markdown",
         )
+        logger.error(f"ERROR: {e}")
 
 
 start_thread(f=from_queue_processing, logger=logger, delay=delay)
