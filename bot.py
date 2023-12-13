@@ -400,7 +400,7 @@ def guess(message: Message):
                     else:
                         bot.send_message(
                             message.chat.id,
-                            f"❌ Не спеши! Картинка еще генерируется, или вы в очереди.",
+                            f"❌ *{message.from_user.full_name}*, не спеши! Картинка еще генерируется, или вы в очереди.",
                             parse_mode="Markdown",
                         )
                 else:
@@ -550,17 +550,24 @@ def stop(message: Message):
     try:
         if not message.chat.type == "private":
             if games.get(str(message.chat.id)) != None:
-                if message.from_user.id == int(games[str(message.chat.id)][4]):
-                    games.pop(str(message.chat.id))
-                    bot.send_message(
-                        message.chat.id,
-                        f"🛑 Игра остановлена! Её остановил *{message.from_user.full_name}*.",
-                        parse_mode="Markdown",
-                    )
+                if games[str(message.chat.id)][4] != "":
+                    if message.from_user.id == int(games[str(message.chat.id)][4]):
+                        games.pop(str(message.chat.id))
+                        bot.send_message(
+                            message.chat.id,
+                            f"🛑 Игра остановлена! Её остановил *{message.from_user.full_name}*.",
+                            parse_mode="Markdown",
+                        )
+                    else:
+                        bot.send_message(
+                            message.chat.id,
+                            f"❌ *{message.from_user.full_name}*, эту команду может использовать только создатель игры!",
+                            parse_mode="Markdown",
+                        )
                 else:
                     bot.send_message(
                         message.chat.id,
-                        f"❌ Эту команду может использовать только создатель игры!",
+                        f"❌ *{message.from_user.full_name}*, игра ещё не запустилась. Вы в очереди.",
                         parse_mode="Markdown",
                     )
             else:
