@@ -25,7 +25,7 @@ def add_request_to_queue(
 
 
 # Функция для обработки запросов из очереди
-def process_requests(f, logger, delay):
+def process_requests(process_func, logger, delay):
     while True:
         time.sleep(delay)
 
@@ -34,9 +34,9 @@ def process_requests(f, logger, delay):
             request = request_queue[0]
             if request is None:
                 break  # Завершаем цикл при получении None из очереди
-            answer, group_id, chat_id, full_name, message_queue_id, user_id = request
+            answer, group_id, _, _, _, user_id = request
 
-            f(request)
+            process_func(request)
 
             if logger is not None:
                 logger.info(
