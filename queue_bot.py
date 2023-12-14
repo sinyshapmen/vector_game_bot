@@ -1,5 +1,4 @@
 import threading
-from queue import Queue
 import time
 
 # Определите глобальную переменную для очереди запросов
