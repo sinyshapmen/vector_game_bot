@@ -1,3 +1,5 @@
 /logs.log
 /configs.ini
 /.vector_cache
+/.vscode
+/__pycache__

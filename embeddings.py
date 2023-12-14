@@ -1,9 +1,9 @@
 import numpy as np
 from openai import OpenAI
 from openai import BadRequestError, RateLimitError
-import torchtext
 import nltk
 from nltk.stem import WordNetLemmatizer
+import torchtext
 
 
 class OpenaiClient:
@@ -43,7 +43,7 @@ class OpenaiClient:
     def activation(self, x: float, b: float = 0.4, n: float = 8.0) -> float:
         return 1 / (1 + np.exp(-n * (x - b)))
 
-    def cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
+    def cosine_similarity(self, a, b) -> float:
         similarity = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
         similarity = self.activation(similarity) / self.activation(1)
         return 0.99 if similarity > 0.99 else similarity

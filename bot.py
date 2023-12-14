@@ -15,7 +15,7 @@ parser = ConfigParser()
 parser.read("configs.ini")
 
 # Get values from the config file
-testing = bool(parser["DEFAULTS"].get("testing"))
+testing = True
 
 token = parser["DEFAULTS"].get("TOKEN")
 test_token = parser["DEFAULTS"].get("TEST_TOKEN")
@@ -72,21 +72,26 @@ def start(message: Message):
                 if param.startswith("pick"):
                     # Extract the group ID from the parameter
                     group_id = param[4:]
-
-                    # Check if a game is already in progress for the group ID
-                    if games.get(str(group_id)) is not None:
-                        bot.send_message(
-                            message.chat.id, "❌ Игра уже идет или вы уже в очереди!"
-                        )
+                    if group_id.startswith("-"):
+                        # Check if a game is already in progress for the group ID
+                        if games.get(str(group_id)) is not None:
+                            bot.send_message(
+                                message.chat.id, "❌ Игра уже идет или вы уже в очереди!"
+                            )
+                        else:
+                            # Prompt the user to send a word to be guessed
+                            answer_message = bot.send_message(
+                                message.chat.id,
+                                "Отправь мне слово, которое хочешь загадать! 😨",
+                            )
+                            # Register a handler for the next message to start word picking
+                            bot.register_next_step_handler(
+                                answer_message, start_word_picking, int(group_id)
+                            )
                     else:
-                        # Prompt the user to send a word to be guessed
-                        answer_message = bot.send_message(
+                        bot.send_message(
                             message.chat.id,
-                            "Отправь мне слово, которое хочешь загадать! 😨",
-                        )
-                        # Register a handler for the next message to start word picking
-                        bot.register_next_step_handler(
-                            answer_message, start_word_picking, int(group_id)
+                            "❌ Не пытайся запустить игру в личке!",
                         )
             else:
                 # Send an error message if the command with parameter is used in a group chat
@@ -229,12 +234,11 @@ def start_word_picking(message: Message, group_id: int):
                             games.pop(str(group_id))
 
                         else:
-                            if lenght > 0:
-                                queue_message = bot.send_message(
-                                    message.chat.id,
-                                    f"⌛ Вы добавлены в очередь.\nПримерное время ожидания: *{(lenght * delay) // 60}* мин.",
-                                    parse_mode="Markdown",
-                                )
+                            queue_message = bot.send_message(
+                                message.chat.id,
+                                f"⌛ Вы добавлены в очередь.\nПримерное время ожидания: *{(lenght * delay) // 60}* мин.",
+                                parse_mode="Markdown",
+                            )
 
                             add_request_to_queue(
                                 answer,

@@ -8,11 +8,11 @@ request_queue = []
 # Функция для добавления запроса в очередь
 def add_request_to_queue(
     answer: str,
-    group_id: str,
-    chat_id: str,
+    group_id: int,
+    chat_id: int,
     full_name: str,
-    message_queue_id: str,
-    user_id: str,
+    message_queue_id: int,
+    user_id: int,
     logger,
 ):
     logger.info(
