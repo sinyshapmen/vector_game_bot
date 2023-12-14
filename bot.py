@@ -21,7 +21,6 @@ token = parser["DEFAULTS"].get("TOKEN")
 test_token = parser["DEFAULTS"].get("TEST_TOKEN")
 
 api_key = parser["DEFAULTS"].get("API_KEY")
-max_size = int(parser["DEFAULTS"].get("max_size"))
 delay = int(parser["DEFAULTS"].get("delay"))
 
 test_bot_name = parser["DEFAULTS"].get("test_bot_name")
@@ -221,34 +220,21 @@ def start_word_picking(message: Message, group_id: int):
 
                         games[str(group_id)] = [answer, {}, "", {}, ""]
 
-                        lenght = get_queue_length() + 1
-                        if lenght > max_size:
-                            bot.send_message(
-                                message.chat.id,
-                                f"❌ К сожалению, очередь переполнена. Эта игра завершится.",
-                            )
-                            bot.send_message(
-                                group_id,
-                                f"❌ К сожалению, очередь переполнена. Эта игра завершится.",
-                            )
-                            games.pop(str(group_id))
+                        queue_message = bot.send_message(
+                            message.chat.id,
+                            f"⌛ Вы добавлены в очередь.\nПримерное время ожидания: *{(lenght * delay) // 60}* мин.",
+                            parse_mode="Markdown",
+                        )
 
-                        else:
-                            queue_message = bot.send_message(
-                                message.chat.id,
-                                f"⌛ Вы добавлены в очередь.\nПримерное время ожидания: *{(lenght * delay) // 60}* мин.",
-                                parse_mode="Markdown",
-                            )
-
-                            add_request_to_queue(
-                                answer,
-                                group_id,
-                                message.chat.id,
-                                message.from_user.full_name,
-                                queue_message.id,
-                                message.from_user.id,
-                                logger,
-                            )
+                        add_request_to_queue(
+                            answer,
+                            group_id,
+                            message.chat.id,
+                            message.from_user.full_name,
+                            queue_message.id,
+                            message.from_user.id,
+                            logger,
+                        )
 
                     else:
                         bot.send_message(
