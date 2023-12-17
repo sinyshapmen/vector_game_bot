@@ -1,8 +1,9 @@
 import threading
 import time
+from tinydb import TinyDB, Query
 
-# Определите глобальную переменную для очереди запросов
-request_queue = []
+queue_db = TinyDB("queue.json")
+User = Query()
 
 
 # Функция для добавления запроса в очередь
@@ -16,12 +17,10 @@ def add_request_to_queue(
     logger,
 ):
     logger.info(
-        f"Adding request: ans {answer} | g_id {group_id} | user {user_id} | q_len {len(request_queue) + 1}"
+        f"Adding request: ans {answer} | g_id {group_id} | user {user_id} | q_len {len(queue_db.all()) + 1}"
     )
 
-    request_queue.append(
-        (answer, group_id, chat_id, full_name, message_queue_id, user_id)
-    )
+    queue_db.insert({'data': (answer, group_id, chat_id, full_name, message_queue_id, user_id)})
 
 
 # Функция для обработки запросов из очереди
@@ -30,8 +29,8 @@ def process_requests(process_func, logger, delay):
         time.sleep(delay)
 
         # Получаем запрос из очереди
-        if len(request_queue):
-            request = request_queue[0]
+        if queue_db.all():
+            request = queue_db.all()[0]['data']
             if request is None:
                 break  # Завершаем цикл при получении None из очереди
             answer, group_id, _, _, _, user_id = request
@@ -43,7 +42,7 @@ def process_requests(process_func, logger, delay):
                     f"Processing request: ans {answer} | g_id {group_id} | user {user_id}"
                 )
 
-            request_queue.pop(0)
+            queue_db.remove(doc_ids=[queue_db.all()[0].doc_id])
 
 
 def start_thread(f, logger=None, delay=60):
@@ -52,4 +51,4 @@ def start_thread(f, logger=None, delay=60):
 
 
 def get_queue_length():
-    return len(request_queue)
+    return len(queue_db.all())

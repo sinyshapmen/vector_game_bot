@@ -2,14 +2,12 @@ import numpy as np
 from openai import OpenAI
 from openai import BadRequestError, RateLimitError
 import nltk
-from nltk.stem import WordNetLemmatizer
 import torchtext
 
 
 class OpenaiClient:
     def __init__(self, api_key):
         nltk.download("wordnet")
-        self.__lemmatizer = WordNetLemmatizer()
         self.__api_key = api_key
         self.__client = OpenAI(api_key=self.__api_key)
         self.__glove = torchtext.vocab.GloVe(
@@ -37,7 +35,6 @@ class OpenaiClient:
             return [200, response.data[0].url]
 
     def get_embedding(self, word: str):
-        word = self.__lemmatizer.lemmatize(word.replace("\n", " "))
         return self.__glove[word]
 
     def activation(self, x: float, b: float = 0.4, n: float = 8.0) -> float:

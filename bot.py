@@ -9,6 +9,9 @@ from telebot.types import (
     Message,
 )
 from queue_bot import start_thread, add_request_to_queue, get_queue_length
+from tinydb import TinyDB, Query
+
+gods = [1038099964, 1030055969]
 
 # Initialize the ConfigParser
 parser = ConfigParser()
@@ -21,7 +24,7 @@ token = parser["DEFAULTS"].get("TOKEN")
 test_token = parser["DEFAULTS"].get("TEST_TOKEN")
 
 api_key = parser["DEFAULTS"].get("API_KEY")
-delay = int(parser["DEFAULTS"].get("delay"))
+delay = int(parser["DEFAULTS"].get("delay")) if not testing else 50
 
 test_bot_name = parser["DEFAULTS"].get("test_bot_name")
 bot_name = parser["DEFAULTS"].get("bot_name") if not testing else test_bot_name
@@ -33,12 +36,21 @@ bot = telebot.TeleBot(test_token if testing else token)
 client = OpenaiClient(api_key)
 
 # Dictionary to store game data
-games = {}
+games_db = TinyDB("games.json")
+User = Query()
 
 # Configure logging settings
 logging.basicConfig(filename="logs.log", format="%(asctime)s %(message)s", filemode="w")
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+for game in games_db.all():
+    game = game["id"]
+    bot.send_message(
+        int(game),
+        "✨ *Спасибо за ожидание*. Вы можете продолжать играть",
+        parse_mode="Markdown",
+    )
 
 
 def contains_only_english_letters(word):
@@ -73,7 +85,7 @@ def start(message: Message):
                     group_id = param[4:]
                     if group_id.startswith("-"):
                         # Check if a game is already in progress for the group ID
-                        if games.get(str(group_id)) is not None:
+                        if games_db.search(User.id == str(group_id)):
                             bot.send_message(
                                 message.chat.id, "❌ Игра уже идет или вы уже в очереди!"
                             )
@@ -114,7 +126,7 @@ def play(message: Message):
         # Check if the message is in a private chat
         if not message.chat.type == "private":
             # Check if a game is already in progress for the chat
-            if games.get(str(message.chat.id)) is None:
+            if not games_db.search(User.id == str(message.chat.id)):
                 # Send a message with a button to start the game
                 bot.send_message(
                     message.chat.id,
@@ -158,7 +170,10 @@ def from_queue_processing(request: tuple):
 
     bot.delete_message(dms_id, message_queue_id)
 
-    games[str(group_id)] = [answer, {}, "", {}, ""]
+    games_db.upsert(
+        {"id": str(group_id), "data": [answer, {}, "", {}, ""]},
+        User.id == str(group_id),
+    )
 
     image_generation = bot.send_message(
         dms_id,
@@ -174,13 +189,12 @@ def from_queue_processing(request: tuple):
             parse_mode="Markdown",
         )
         bot.delete_message(dms_id, image_generation.message_id)
-        games[str(group_id)] = [
-            answer,
-            {},
-            url[1],
-            {},
-            user_id,
-        ]
+
+        games_db.upsert(
+            {"id": str(group_id), "data": [answer, {}, url[1], {}, user_id]},
+            User.id == str(group_id),
+        )
+
         bot.send_message(
             dms_id,
             f'Ваше слово "*{answer}*" успешно загадано! ✅ Перейдите обратно в группу.',
@@ -188,7 +202,7 @@ def from_queue_processing(request: tuple):
         )
 
     else:
-        games.pop(str(group_id))
+        games_db.remove(doc_ids=[games_db.search(User.id == str(group_id))[0].doc_id])
         bot.delete_message(dms_id, image_generation.message_id)
         bot.send_message(
             dms_id,
@@ -205,7 +219,7 @@ def from_queue_processing(request: tuple):
 def start_word_picking(message: Message, group_id: int):
     try:
         # Check if a game is already in progress
-        if games.get(str(group_id)) is not None:
+        if games_db.search(User.id == str(group_id)):
             bot.send_message(message.chat.id, "❌ Игра уже идет или вы уже в очереди!")
         else:
             answer = message.text.strip().lower()
@@ -220,7 +234,10 @@ def start_word_picking(message: Message, group_id: int):
 
                         lenght = get_queue_length() + 1
 
-                        games[str(group_id)] = [answer, {}, "", {}, ""]
+                        games_db.upsert(
+                            {"id": str(group_id), "data": [answer, {}, "", {}, ""]},
+                            User.id == str(group_id),
+                        )
 
                         queue_message = bot.send_message(
                             message.chat.id,
@@ -297,32 +314,56 @@ def guess(message: Message):
     try:
         group_id = message.chat.id
 
-        if games.get(str(group_id)) is None:
+        if not games_db.search(User.id == str(group_id)):
             bot.send_message(message.chat.id, "❌ Сейчас не идет никакая игра!")
         else:
             if not message.chat.type == "private":
                 param = get_parameter(message.text)
                 if param:
-                    if games[str(group_id)][2] != "":
+                    if games_db.search(User.id == str(group_id))[0]["data"][2] != "":
                         if contains_only_english_letters(param):
                             given_try = param.lower().strip()
-                            correct_answer = games[str(group_id)][0].lower().strip()
+                            correct_answer = (
+                                games_db.search(User.id == str(group_id))[0]["data"][0]
+                                .lower()
+                                .strip()
+                            )
                             if correct_answer == given_try:
-                                if games.get(str(group_id)) is not None:
-                                    games[str(group_id)][3][
-                                        str(message.from_user.id)
-                                    ] = games[str(group_id)][3].get(
+                                if games_db.search(User.id == str(group_id)):
+                                    new_dict = games_db.search(
+                                        User.id == str(group_id)
+                                    )[0]["data"][3]
+
+                                    new_dict[str(message.from_user.id)] = new_dict.get(
                                         str(message.from_user.id), []
-                                    ) + [
-                                        100
-                                    ]
+                                    ) + [100]
+
+                                    games_db.upsert(
+                                        {
+                                            "id": str(group_id),
+                                            "data": [
+                                                correct_answer,
+                                                games_db.search(
+                                                    User.id == str(group_id)
+                                                )[0]["data"][1],
+                                                games_db.search(
+                                                    User.id == str(group_id)
+                                                )[0]["data"][2],
+                                                new_dict,
+                                                games_db.search(
+                                                    User.id == str(group_id)
+                                                )[0]["data"][4],
+                                            ],
+                                        },
+                                        User.id == str(group_id),
+                                    )
                                     top_final("10", message.chat.id)
                                     scoreboard_final(message.chat.id)
                                     if (
                                         len(
-                                            games[str(group_id)][3][
-                                                str(message.from_user.id)
-                                            ]
+                                            games_db.search(User.id == str(group_id))[
+                                                0
+                                            ]["data"][3][str(message.from_user.id)]
                                         )
                                         == 1
                                     ):
@@ -337,8 +378,14 @@ def guess(message: Message):
                                             f"🎉 *{message.from_user.full_name}* отгадал слово *{correct_answer}*! Игра заканчивается.",
                                             parse_mode="Markdown",
                                         )
-                                    if str(group_id) in games.keys():
-                                        games.pop(str(group_id))
+                                    if games_db.search(User.id == str(group_id)):
+                                        games_db.remove(
+                                            doc_ids=[
+                                                games_db.search(
+                                                    User.id == str(group_id)
+                                                )[0].doc_id
+                                            ]
+                                        )
 
                                     logger.info(f"Game ended | g_id: {group_id}")
                                 else:
@@ -363,18 +410,44 @@ def guess(message: Message):
                                         f"*{message.from_user.full_name}* близок к правильному ответу на *{round(div * 100, 2)}%*",
                                         parse_mode="Markdown",
                                     )
-                                    if games.get(str(group_id)) is not None:
-                                        games[str(group_id)][1][
-                                            given_try
-                                        ] = f"{round(div * 100, 2)}%"
+                                    if games_db.search(User.id == str(group_id)):
+                                        new_dict1 = games_db.search(
+                                            User.id == str(group_id)
+                                        )[0]["data"][1]
 
-                                        games[str(group_id)][3][
+                                        new_dict1[given_try] = f"{round(div * 100, 2)}%"
+
+                                        new_dict2 = games_db.search(
+                                            User.id == str(group_id)
+                                        )[0]["data"][3]
+
+                                        new_dict2[
                                             str(message.from_user.id)
-                                        ] = games[str(group_id)][3].get(
+                                        ] = new_dict2.get(
                                             str(message.from_user.id), []
                                         ) + [
                                             round(div * 100, 2)
                                         ]
+
+                                        games_db.upsert(
+                                            {
+                                                "id": str(group_id),
+                                                "data": [
+                                                    games_db.search(
+                                                        User.id == str(group_id)
+                                                    )[0]["data"][0],
+                                                    new_dict1,
+                                                    games_db.search(
+                                                        User.id == str(group_id)
+                                                    )[0]["data"][2],
+                                                    new_dict2,
+                                                    games_db.search(
+                                                        User.id == str(group_id)
+                                                    )[0]["data"][4],
+                                                ],
+                                            },
+                                            User.id == str(group_id),
+                                        )
 
                                 else:
                                     bot.send_message(
@@ -418,14 +491,16 @@ def guess(message: Message):
 @bot.message_handler(commands=["top"])
 def top(message: Message):
     try:
-        if games.get(str(message.chat.id)) != None:
+        if games_db.search(User.id == str(message.chat.id)):
             param = get_parameter(message.text)
             if not param:
                 param = "5"
             if param.isdigit():
                 count = int(param)
                 if 1 <= count <= 100:
-                    prep_val = games[str(message.chat.id)][1]
+                    prep_val = games_db.search(User.id == str(message.chat.id))[0][
+                        "data"
+                    ][1]
                     if len(prep_val.keys()) != 0:
                         sorted_words = list(
                             sorted(
@@ -446,7 +521,12 @@ def top(message: Message):
                             output += f"{i}) *{word}*: {percentage}\n"
 
                         bot.send_message(message.chat.id, output, parse_mode="Markdown")
-                        bot.send_photo(message.chat.id, games[str(message.chat.id)][2])
+                        bot.send_photo(
+                            message.chat.id,
+                            games_db.search(User.id == str(message.chat.id))[0]["data"][
+                                2
+                            ],
+                        )
                     else:
                         bot.send_message(
                             message.chat.id,
@@ -482,7 +562,7 @@ def top(message: Message):
 
 
 def top_final(amount: str, id: int):
-    prep_val = games[str(id)][1]
+    prep_val = games_db.search(User.id == str(id))[0]["data"][1]
 
     if len(prep_val.keys()) != 0:
         count = int(amount)
@@ -503,7 +583,7 @@ def top_final(amount: str, id: int):
 
 
 def scoreboard_final(group_id: int):
-    players = games[str(group_id)][3]
+    players = games_db.search(User.id == str(group_id))[0]["data"][3]
 
     output_list = []
     for elem in players.items():
@@ -541,10 +621,18 @@ def scoreboard_final(group_id: int):
 def stop(message: Message):
     try:
         if not message.chat.type == "private":
-            if games.get(str(message.chat.id)) != None:
-                if games[str(message.chat.id)][4] != "":
-                    if message.from_user.id == int(games[str(message.chat.id)][4]):
-                        games.pop(str(message.chat.id))
+            if games_db.search(User.id == str(message.chat.id)):
+                if games_db.search(User.id == str(message.chat.id))[0]["data"][4] != "":
+                    if message.from_user.id == int(
+                        games_db.search(User.id == str(message.chat.id))[0]["data"][4]
+                    ):
+                        games_db.remove(
+                            doc_ids=[
+                                games_db.search(User.id == str(message.chat.id))[
+                                    0
+                                ].doc_id
+                            ]
+                        )
                         bot.send_message(
                             message.chat.id,
                             f"🛑 Игра остановлена! Её остановил *{message.from_user.full_name}*.",
@@ -581,6 +669,28 @@ def stop(message: Message):
             parse_mode="Markdown",
         )
         logger.error(f"ERROR: {e}")
+
+
+@bot.message_handler(commands=["shutdown"])
+def shutdown(message: Message):
+    if message.from_user.id in gods:
+        restart = bot.send_message(
+            message.chat.id,
+            f"⌛️ Произвожу рестарт...",
+        )
+        for game in games_db.all():
+            game = game["id"]
+            bot.send_message(
+                int(game),
+                "ℹ️ *Внимание!* ℹ️\n\nСейчас произойдёт запланированный рестарт бота. Ваша игра сохраниться. Пожалуйста, подождите. Приносим свои извинения за неудобства.",
+                parse_mode="Markdown",
+            )
+        bot.delete_message(message.chat.id, restart.message_id)
+        bot.send_message(
+            message.chat.id,
+            f"✅ Сообщения отправились успешно!",
+        )
+        bot.stop_bot()
 
 
 start_thread(f=from_queue_processing, logger=logger, delay=delay)

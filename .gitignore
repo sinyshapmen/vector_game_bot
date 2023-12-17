@@ -3,3 +3,5 @@
 /.vector_cache
 /.vscode
 /__pycache__
+/games.json
+/queue.json
