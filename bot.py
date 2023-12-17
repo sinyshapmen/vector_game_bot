@@ -90,7 +90,7 @@ def start(message: Message):
                     else:
                         bot.send_message(
                             message.chat.id,
-                            "❌ Не пытайся запустить игру в личке!",
+                            "❌ Не пытайся запустить игру в личных сообщениях!",
                         )
             else:
                 # Send an error message if the command with parameter is used in a group chat
@@ -218,6 +218,8 @@ def start_word_picking(message: Message, group_id: int):
                     if client.exist(answer_embedding):
                         logging.info(f"Game started | ans: {answer} | g_id: {group_id}")
 
+                        lenght = get_queue_length() + 1
+
                         games[str(group_id)] = [answer, {}, "", {}, ""]
 
                         queue_message = bot.send_message(
@@ -326,7 +328,7 @@ def guess(message: Message):
                                     ):
                                         bot.send_message(
                                             group_id,
-                                            f"🎉 *{message.from_user.full_name}* молодец! Ты отгадал слово *{correct_answer}* с первой попытки! Вот это мастерство! 🤯",
+                                            f"🎉 *{message.from_user.full_name}*, молодец! Ты отгадал слово *{correct_answer}* с первой попытки! Вот это мастерство! 🤯",
                                             parse_mode="Markdown",
                                         )
                                     else:
@@ -358,7 +360,7 @@ def guess(message: Message):
                                     )
                                     bot.send_message(
                                         group_id,
-                                        f"Ответ *{message.from_user.full_name}* близок к правильному на *{round(div * 100, 2)}%*",
+                                        f"*{message.from_user.full_name}* близок к правильному ответу на *{round(div * 100, 2)}%*",
                                         parse_mode="Markdown",
                                     )
                                     if games.get(str(group_id)) is not None:
