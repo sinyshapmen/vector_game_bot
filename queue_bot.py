@@ -2,7 +2,7 @@ import threading
 import time
 from tinydb import TinyDB, Query
 
-queue_db = TinyDB("queue.json")
+queue_db = TinyDB("database/queue.json")
 User = Query()
 
 
@@ -20,7 +20,9 @@ def add_request_to_queue(
         f"Adding request: ans {answer} | g_id {group_id} | user {user_id} | q_len {len(queue_db.all()) + 1}"
     )
 
-    queue_db.insert({'data': (answer, group_id, chat_id, full_name, message_queue_id, user_id)})
+    queue_db.insert(
+        {"data": (answer, group_id, chat_id, full_name, message_queue_id, user_id)}
+    )
 
 
 # Функция для обработки запросов из очереди
@@ -30,7 +32,7 @@ def process_requests(process_func, logger, delay):
 
         # Получаем запрос из очереди
         if queue_db.all():
-            request = queue_db.all()[0]['data']
+            request = queue_db.all()[0]["data"]
             if request is None:
                 break  # Завершаем цикл при получении None из очереди
             answer, group_id, _, _, _, user_id = request

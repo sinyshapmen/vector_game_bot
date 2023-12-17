@@ -1,6 +1,7 @@
 from configparser import ConfigParser
 import logging
-from embeddings import OpenaiClient
+from models.embeddings import OpenaiClient
+from models.image_generation import generate_image
 import telebot
 import re
 from telebot.types import (
@@ -18,7 +19,7 @@ parser = ConfigParser()
 parser.read("configs.ini")
 
 # Get values from the config file
-testing = True
+testing = False
 
 token = parser["DEFAULTS"].get("TOKEN")
 test_token = parser["DEFAULTS"].get("TEST_TOKEN")
@@ -29,6 +30,9 @@ delay = int(parser["DEFAULTS"].get("delay")) if not testing else 50
 test_bot_name = parser["DEFAULTS"].get("test_bot_name")
 bot_name = parser["DEFAULTS"].get("bot_name") if not testing else test_bot_name
 
+api_key = parser["IMAGEGEN"].get("api_key")
+secret_key = parser["IMAGEGEN"].get("secret_key")
+
 test_image_url = "https://t4.ftcdn.net/jpg/03/03/62/45/360_F_303624505_u0bFT1Rnoj8CMUSs8wMCwoKlnWlh5Jiq.jpg"
 
 # Initialize the telebot and OpenaiClient
@@ -36,7 +40,7 @@ bot = telebot.TeleBot(test_token if testing else token)
 client = OpenaiClient(api_key)
 
 # Dictionary to store game data
-games_db = TinyDB("games.json")
+games_db = TinyDB("database/games.json")
 User = Query()
 
 # Configure logging settings
@@ -180,18 +184,26 @@ def from_queue_processing(request: tuple):
         f'Картинка "*{answer}*" генерируется 😎',
         parse_mode="Markdown",
     )
-    url = client.generate_image(answer) if not testing else (200, test_image_url)
-    if url[0] == 200:
-        bot.send_photo(
+    status, generated_photo_bytes = generate_image(
+        api_key=api_key, secret_key=secret_key, prompt=answer
+    )
+
+    if status == 200:
+        sent_image = bot.send_photo(
             group_id,
-            url[1],
+            generated_photo_bytes,
             f"Пользователь *{user_nick}* загадал слово!\nПишите свои ответы в формате `/guess ответ` в этом чате!\nЧтобы остановить игру, напишите `/stop`.",
             parse_mode="Markdown",
         )
         bot.delete_message(dms_id, image_generation.message_id)
 
+        print(sent_image.photo[0].file_id)
+
         games_db.upsert(
-            {"id": str(group_id), "data": [answer, {}, url[1], {}, user_id]},
+            {
+                "id": str(group_id),
+                "data": [answer, {}, sent_image.photo[0].file_id, {}, user_id],
+            },
             User.id == str(group_id),
         )
 
@@ -206,12 +218,12 @@ def from_queue_processing(request: tuple):
         bot.delete_message(dms_id, image_generation.message_id)
         bot.send_message(
             dms_id,
-            f"❌ Ошибка генерации: `{url[1]}`",
+            f"❌ Ошибка генерации. Возможно, ваш запрос содержит недопустимые слова.",
             parse_mode="Markdown",
         )
         bot.send_message(
             group_id,
-            f"❌ Ошибка генерации. Начните игру заново: `{url[1]}`",
+            f"❌ Ошибка генерации. Начните игру заново.",
             parse_mode="Markdown",
         )
 
@@ -523,9 +535,9 @@ def top(message: Message):
                         bot.send_message(message.chat.id, output, parse_mode="Markdown")
                         bot.send_photo(
                             message.chat.id,
-                            games_db.search(User.id == str(message.chat.id))[0]["data"][
-                                2
-                            ],
+                            photo=games_db.search(User.id == str(message.chat.id))[0][
+                                "data"
+                            ][2],
                         )
                     else:
                         bot.send_message(
