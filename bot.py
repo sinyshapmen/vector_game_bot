@@ -58,7 +58,7 @@ database_client = PostgreClient(
     logger=logger,
     password=password,
     dbname=user_db_name,
-    username=username,
+    user=username,
 )
 database_client.init_user_table()
 
@@ -91,7 +91,9 @@ def start(message: Message):
         # Check if the parameter is empty
         if not param:
             if message.chat.type == "private":
-                pass  # TODO add user
+                
+                database_client.add_user_if_not_exists(message.from_user.id)
+
             bot.send_message(
                 message.chat.id,
                 "👋 Привет! Я - бот, с помощью которого можно загадывать слова, чтобы твои друзья их отгадывали. Я буду давать им подсказки и указывать, насколько они близки к правильному слову. Чтобы загадать слово, напиши в группе /play. (Играть надо на английском языке)",
@@ -99,7 +101,9 @@ def start(message: Message):
         else:
             # Check if the message is sent in a private chat
             if message.chat.type == "private":
-                # TODO add user
+
+                database_client.add_user_if_not_exists(message.from_user.id)
+
                 if param.startswith("pick"):
                     # Extract the group ID from the parameter
                     group_id = param[4:]
@@ -712,6 +716,7 @@ def shutdown(message: Message):
                 parse_mode="Markdown",
             )
         bot.delete_message(message.chat.id, restart.message_id)
+        logger.info('shutdowned bot')
         bot.send_message(
             message.chat.id,
             f"✅ Сообщения отправились успешно!",

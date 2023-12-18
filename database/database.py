@@ -30,7 +30,7 @@ class PostgreClient:
             """
             )
             if self.logger is not None:
-                self.logger.info(f"table users initted")
+                self.logger.info(f"table users initiaized")
         except Exception as e:
             if self.logger is not None:
                 self.logger.error(f"ERROR: {e}")
