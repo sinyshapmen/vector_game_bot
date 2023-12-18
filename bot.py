@@ -11,21 +11,27 @@ from telebot.types import (
 )
 from queue_bot import start_thread, add_request_to_queue, get_queue_length
 from tinydb import TinyDB, Query
+from database.database import PostgreClient
 
 gods = [1038099964, 1030055969]
+
+# Configure logging settings
+logging.basicConfig(filename="logs.log", format="%(asctime)s %(message)s", filemode="w")
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 # Initialize the ConfigParser
 parser = ConfigParser()
 parser.read("configs.ini")
 
 # Get values from the config file
-testing = False
+testing = True
 
 token = parser["DEFAULTS"].get("TOKEN")
 test_token = parser["DEFAULTS"].get("TEST_TOKEN")
 
 api_key = parser["DEFAULTS"].get("API_KEY")
-delay = int(parser["DEFAULTS"].get("delay")) if not testing else 50
+delay = int(parser["DEFAULTS"].get("delay")) if not testing else 10
 
 test_bot_name = parser["DEFAULTS"].get("test_bot_name")
 bot_name = parser["DEFAULTS"].get("bot_name") if not testing else test_bot_name
@@ -33,7 +39,12 @@ bot_name = parser["DEFAULTS"].get("bot_name") if not testing else test_bot_name
 api_key = parser["IMAGEGEN"].get("api_key")
 secret_key = parser["IMAGEGEN"].get("secret_key")
 
-test_image_url = "https://t4.ftcdn.net/jpg/03/03/62/45/360_F_303624505_u0bFT1Rnoj8CMUSs8wMCwoKlnWlh5Jiq.jpg"
+host = parser["DATABASE"].get("host")
+username = parser["DATABASE"].get("username")
+password = parser["DATABASE"].get("password")
+
+user_db_name = parser["DATABASE"].get("user_db_name")
+games_db_name = parser["DATABASE"].get("games_db_name")
 
 # Initialize the telebot and OpenaiClient
 bot = telebot.TeleBot(test_token if testing else token)
@@ -42,11 +53,14 @@ client = OpenaiClient(api_key)
 # Dictionary to store game data
 games_db = TinyDB("database/games.json")
 User = Query()
-
-# Configure logging settings
-logging.basicConfig(filename="logs.log", format="%(asctime)s %(message)s", filemode="w")
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+database_client = PostgreClient(
+    host=host,
+    logger=logger,
+    password=password,
+    dbname=user_db_name,
+    username=username,
+)
+database_client.init_user_table()
 
 for game in games_db.all():
     game = game["id"]
@@ -76,7 +90,8 @@ def start(message: Message):
 
         # Check if the parameter is empty
         if not param:
-            # Send a welcome message with instructions
+            if message.chat.type == "private":
+                pass  # TODO add user
             bot.send_message(
                 message.chat.id,
                 "👋 Привет! Я - бот, с помощью которого можно загадывать слова, чтобы твои друзья их отгадывали. Я буду давать им подсказки и указывать, насколько они близки к правильному слову. Чтобы загадать слово, напиши в группе /play. (Играть надо на английском языке)",
@@ -84,6 +99,7 @@ def start(message: Message):
         else:
             # Check if the message is sent in a private chat
             if message.chat.type == "private":
+                # TODO add user
                 if param.startswith("pick"):
                     # Extract the group ID from the parameter
                     group_id = param[4:]
@@ -196,8 +212,6 @@ def from_queue_processing(request: tuple):
             parse_mode="Markdown",
         )
         bot.delete_message(dms_id, image_generation.message_id)
-
-        print(sent_image.photo[0].file_id)
 
         games_db.upsert(
             {
