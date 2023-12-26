@@ -269,9 +269,11 @@ def start_word_picking(message: Message, group_id: int):
                             User.id == str(group_id),
                         )
 
+                        wait_time = (lenght * delay)
+
                         queue_message = bot.send_message(
                             message.chat.id,
-                            f"⌛ Вы добавлены в очередь.\nПримерное время ожидания: *{(lenght * delay) // 60}* мин.",
+                            "⌛ Вы добавлены в очередь.\nПримерное время ожидания: " + (f"*{wait_time // 60}* мин." if (wait_time // 60) > 0 else f"*{wait_time}* сек."),
                             parse_mode="Markdown",
                         )
 
@@ -712,7 +714,7 @@ def shutdown(message: Message):
             game = game["id"]
             bot.send_message(
                 int(game),
-                "ℹ️ *Внимание!* ℹ️\n\nСейчас произойдёт запланированный рестарт бота. Ваша игра сохраниться. Пожалуйста, подождите. Приносим свои извинения за неудобства.",
+                "ℹ️ *Внимание!* ℹ️\n\nСейчас произойдёт запланированный рестарт бота. Ваша игра сохранится. Пожалуйста, подождите. Приносим свои извинения за неудобства.",
                 parse_mode="Markdown",
             )
         bot.delete_message(message.chat.id, restart.message_id)
