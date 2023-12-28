@@ -6,17 +6,12 @@ class PostgreClient:
         self, host: str, dbname: str, user: str, password: str, logger=None
     ) -> None:
         self.logger = logger
-        self.__cur = None
-        try:
-            self.__conn = psycopg2.connect(
-                f"host={host} dbname={dbname} user={user} password={password}"
-            )
-            self.__cur = self.__conn.cursor()
-            if logger is not None:
-                self.logger.info("Database connected")
-        except Exception as e:
-            if logger is not None:
-                self.logger.error(f"ERROR: {e}")
+        self.__conn = psycopg2.connect(
+            f"host={host} dbname={dbname} user={user} password={password}"
+        )
+        self.__cur = self.__conn.cursor()
+        if logger is not None:
+            self.logger.info("Database connected")
 
     def log_decorator(message: str):
         def actual_decorator(func):
@@ -57,9 +52,9 @@ class PostgreClient:
     @log_decorator("Successful interaction 'add_user_if_not_exists'")
     def add_user_if_not_exists(self, user_id):
         self.__cur.execute("SELECT COUNT(*) FROM users WHERE user_id = %s", (user_id,))
-        count = self.__cur.fetchone()[0]
+        count: tuple | None = self.__cur.fetchone()
 
-        if count == 0:
+        if count is not None and count[0] == 0:
             self.__cur.execute(
                 "INSERT INTO users (user_id) VALUES (%s)",
                 (user_id,),
@@ -83,7 +78,12 @@ class PostgreClient:
         )
         self.__conn.commit()
 
-    @log_decorator("Successful interaction 'drop_table'")
+    @log_decorator("Table dropped")
     def drop_table(self, table_name):
         self.__cur.execute(f"DROP TABLE IF EXISTS {table_name};")
+        self.__conn.commit()
+
+    @log_decorator("User deleted")
+    def delete_user(self, user_id):
+        self.__cur.execute(f"DELETE FROM users WHERE user_id = {user_id};")
         self.__conn.commit()

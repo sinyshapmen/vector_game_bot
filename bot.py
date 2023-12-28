@@ -91,7 +91,6 @@ def start(message: Message):
         # Check if the parameter is empty
         if not param:
             if message.chat.type == "private":
-                
                 database_client.add_user_if_not_exists(message.from_user.id)
 
             bot.send_message(
@@ -101,7 +100,6 @@ def start(message: Message):
         else:
             # Check if the message is sent in a private chat
             if message.chat.type == "private":
-
                 database_client.add_user_if_not_exists(message.from_user.id)
 
                 if param.startswith("pick"):
@@ -269,11 +267,16 @@ def start_word_picking(message: Message, group_id: int):
                             User.id == str(group_id),
                         )
 
-                        wait_time = (lenght * delay)
+                        wait_time = lenght * delay
 
                         queue_message = bot.send_message(
                             message.chat.id,
-                            "⌛ Вы добавлены в очередь.\nПримерное время ожидания: " + (f"*{wait_time // 60}* мин." if (wait_time // 60) > 0 else f"*{wait_time}* сек."),
+                            "⌛ Вы добавлены в очередь.\nПримерное время ожидания: "
+                            + (
+                                f"*{wait_time // 60}* мин."
+                                if (wait_time // 60) > 0
+                                else f"*{wait_time}* сек."
+                            ),
                             parse_mode="Markdown",
                         )
 
@@ -718,7 +721,7 @@ def shutdown(message: Message):
                 parse_mode="Markdown",
             )
         bot.delete_message(message.chat.id, restart.message_id)
-        logger.info('shutdowned bot')
+        logger.info("shutdowned bot")
         bot.send_message(
             message.chat.id,
             f"✅ Сообщения отправились успешно!",
