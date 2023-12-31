@@ -1,7 +1,9 @@
 from configparser import ConfigParser
 import logging
-from models.embeddings import OpenaiClient
-from models.image_generation import generate_image
+from models.embeddings import Embeddings
+from models.kandinsky import KandinskyClient
+from models.dalle import OpenaiClient
+
 import telebot
 import re
 from telebot.types import (
@@ -30,14 +32,14 @@ testing = True
 token = parser["DEFAULTS"].get("TOKEN")
 test_token = parser["DEFAULTS"].get("TEST_TOKEN")
 
-api_key = parser["DEFAULTS"].get("API_KEY")
 delay = int(parser["DEFAULTS"].get("delay")) if not testing else 10
 
 test_bot_name = parser["DEFAULTS"].get("test_bot_name")
 bot_name = parser["DEFAULTS"].get("bot_name") if not testing else test_bot_name
 
-api_key = parser["IMAGEGEN"].get("api_key")
-secret_key = parser["IMAGEGEN"].get("secret_key")
+kandinsky_api_key = parser["IMAGEGEN"].get("kandisky_api_key")
+kandinsky_secret_key = parser["IMAGEGEN"].get("kandinsky_secret_key")
+dalle_api_key = parser["IMAGEGEN"].get("dalle_api_key")
 
 host = parser["DATABASE"].get("host")
 username = parser["DATABASE"].get("username")
@@ -48,19 +50,24 @@ games_db_name = parser["DATABASE"].get("games_db_name")
 
 # Initialize the telebot and OpenaiClient
 bot = telebot.TeleBot(test_token if testing else token)
-client = OpenaiClient(api_key)
+dalle_client = OpenaiClient(dalle_api_key)
+kandinsky_client = KandinskyClient(
+    "https://api-key.fusionbrain.ai/", kandinsky_api_key, kandinsky_secret_key
+)
+embedding_client = Embeddings()
 
 # Dictionary to store game data
 games_db = TinyDB("database/games.json")
 User = Query()
-database_client = PostgreClient(
-    host=host,
-    logger=logger,
-    password=password,
-    dbname=user_db_name,
-    user=username,
-)
-database_client.init_user_table()
+if not testing:
+    database_client = PostgreClient(
+        host=host,
+        logger=logger,
+        password=password,
+        dbname=user_db_name,
+        user=username,
+    )
+    database_client.init_user_table()
 
 for game in games_db.all():
     game = game["id"]
@@ -90,7 +97,7 @@ def start(message: Message):
 
         # Check if the parameter is empty
         if not param:
-            if message.chat.type == "private":
+            if message.chat.type == "private" and not testing:
                 database_client.add_user_if_not_exists(message.from_user.id)
 
             bot.send_message(
@@ -100,7 +107,8 @@ def start(message: Message):
         else:
             # Check if the message is sent in a private chat
             if message.chat.type == "private":
-                database_client.add_user_if_not_exists(message.from_user.id)
+                if not testing:
+                    database_client.add_user_if_not_exists(message.from_user.id)
 
                 if param.startswith("pick"):
                     # Extract the group ID from the parameter
@@ -202,9 +210,7 @@ def from_queue_processing(request: tuple):
         f'Картинка "*{answer}*" генерируется 😎',
         parse_mode="Markdown",
     )
-    status, generated_photo_bytes = generate_image(
-        api_key=api_key, secret_key=secret_key, prompt=answer
-    )
+    status, generated_photo_bytes = kandinsky_client.generate_image(answer)
 
     if status == 200:
         sent_image = bot.send_photo(
@@ -255,9 +261,9 @@ def start_word_picking(message: Message, group_id: int):
             if not len(answer.split()) > 1:
                 # Check if the answer contains only English letters
                 if contains_only_english_letters(answer):
-                    answer_embedding = client.get_embedding(answer)
+                    answer_embedding = embedding_client.get_embedding(answer)
                     # Check if the answer exists in the embeddings
-                    if client.exist(answer_embedding):
+                    if embedding_client.exist(answer_embedding):
                         logging.info(f"Game started | ans: {answer} | g_id: {group_id}")
 
                         lenght = get_queue_length() + 1
@@ -429,15 +435,19 @@ def guess(message: Message):
                                         "❌ Сейчас не идет никакая игра!",
                                     )
                             else:
-                                correct_embedding = client.get_embedding(correct_answer)
-                                given_try_embedding = client.get_embedding(given_try)
+                                correct_embedding = embedding_client.get_embedding(
+                                    correct_answer
+                                )
+                                given_try_embedding = embedding_client.get_embedding(
+                                    given_try
+                                )
 
                                 logger.info(
                                     f"Get {given_try} from {message.from_user.id} | {group_id}"
                                 )
 
-                                if client.exist(given_try_embedding):
-                                    div = client.cosine_similarity(
+                                if embedding_client.exist(given_try_embedding):
+                                    div = embedding_client.cosine_similarity(
                                         correct_embedding, given_try_embedding
                                     )
                                     bot.send_message(
@@ -730,4 +740,5 @@ def shutdown(message: Message):
 
 
 start_thread(f=from_queue_processing, logger=logger, delay=delay)
+logger.info("started bot")
 bot.infinity_polling()

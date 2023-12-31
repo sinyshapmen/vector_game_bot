@@ -4,8 +4,10 @@ import base64
 import requests
 
 
-class Text2ImageAPI:
+class KandinskyClient:
     def __init__(self, url, api_key, secret_key):
+        self.api_key = api_key
+        self.secret_key = secret_key
         self.URL = url
         self.AUTH_HEADERS = {
             "X-Key": f"Key {api_key}",
@@ -19,7 +21,7 @@ class Text2ImageAPI:
         data = response.json()
         return data[0]["id"]
 
-    def generate(self, prompt, model, images=1, width=1024, height=1024):
+    def generate(self, prompt: str, model, images=1, width=1024, height=1024):
         params = {
             "type": "GENERATE",
             "numImages": images,
@@ -40,7 +42,7 @@ class Text2ImageAPI:
         data = response.json()
         return data["uuid"]
 
-    def check_generation(self, request_id, attempts=10, delay=10):
+    def check_generation(self, request_id: str, attempts: int = 10, delay: int = 10):
         while attempts > 0:
             response = requests.get(
                 self.URL + "key/api/v1/text2image/status/" + request_id,
@@ -53,13 +55,14 @@ class Text2ImageAPI:
             attempts -= 1
             time.sleep(delay)
 
+    def generate_image(self, prompt: str) -> tuple:
+        try:
+            model_id = self.get_model()
+            uuid = self.generate(prompt, model_id)
+            images, censored = self.check_generation(uuid)
 
-def generate_image(prompt, api_key, secret_key):
-    api = Text2ImageAPI("https://api-key.fusionbrain.ai/", api_key, secret_key)
-    model_id = api.get_model()
-    uuid = api.generate(prompt, model_id)
-    images, censored = api.check_generation(uuid)
+            image_data = base64.b64decode(images[0])
 
-    image_data = base64.b64decode(images[0])
-
-    return [400 if censored else 200, image_data]
+            return 400 if censored else 200, image_data
+        except Exception as e:
+            return 500, e

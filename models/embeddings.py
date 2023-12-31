@@ -1,38 +1,14 @@
 import numpy as np
-from openai import OpenAI
-from openai import BadRequestError, RateLimitError
 import nltk
 import torchtext
 
 
-class OpenaiClient:
-    def __init__(self, api_key):
+class Embeddings:
+    def __init__(self):
         nltk.download("wordnet")
-        self.__api_key = api_key
-        self.__client = OpenAI(api_key=self.__api_key)
         self.__glove = torchtext.vocab.GloVe(
             name="6B", dim=50  # trained on Wikipedia 2014 corpus of 6 billion words
         )
-
-    def generate_image(
-        self, prompt, model="dall-e-3", size="1024x1024", quality="standard", n=1
-    ) -> str:
-        try:
-            response = self.__client.images.generate(
-                model=model,
-                prompt=prompt,
-                size=size,
-                quality=quality,
-                n=n,
-            )
-        except BadRequestError as e:
-            return [400, e.code]
-        except RateLimitError as e:
-            return [429, e.code]
-        except Exception as e:
-            return [500, e]
-        else:
-            return [200, response.data[0].url]
 
     def get_embedding(self, word: str):
         return self.__glove[word]
