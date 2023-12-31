@@ -216,7 +216,7 @@ def from_queue_processing(request: tuple):
         sent_image = bot.send_photo(
             group_id,
             generated_photo_bytes,
-            f"Пользователь *{user_nick}* загадал слово!\nПишите свои ответы в формате `/guess ответ` в этом чате!\nЧтобы остановить игру, напишите `/stop`.",
+            f"Пользователь *{user_nick}* загадал слово!\nПишите свои ответы в формате `/guess ответ`,  `guess ответ` или просто отвечай на сообщения бота в этом чате!\nЧтобы остановить игру, напиши `/stop`.",
             parse_mode="Markdown",
         )
         bot.delete_message(dms_id, image_generation.message_id)
@@ -737,6 +737,17 @@ def shutdown(message: Message):
             f"✅ Сообщения отправились успешно!",
         )
         bot.stop_bot()
+
+
+@bot.message_handler(content_types=["text"])
+def alternative_guess(message: Message):
+    if message.text.lower().startswith('guess') and (len(message.text) == 5 or message.text[5] == ' '):
+        message.text = '/' + message.text
+        guess(message)
+    if message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id:
+        message.text = '/guess ' + message.text
+        guess(message)
+
 
 
 start_thread(f=from_queue_processing, logger=logger, delay=delay)
