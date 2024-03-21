@@ -77,6 +77,8 @@ for game in games_db.all():
         parse_mode="Markdown",
     )
 
+print("bot started")
+
 
 def contains_only_english_letters(word):
     return bool(re.match("^[a-zA-Z]+$", word))
@@ -117,7 +119,8 @@ def start(message: Message):
                         # Check if a game is already in progress for the group ID
                         if games_db.search(User.id == str(group_id)):
                             bot.send_message(
-                                message.chat.id, "❌ Игра уже идет или вы уже в очереди!"
+                                message.chat.id,
+                                "❌ Игра уже идет или вы уже в очереди!",
                             )
                         else:
                             # Prompt the user to send a word to be guessed
@@ -466,13 +469,10 @@ def guess(message: Message):
                                             User.id == str(group_id)
                                         )[0]["data"][3]
 
-                                        new_dict2[
-                                            str(message.from_user.id)
-                                        ] = new_dict2.get(
-                                            str(message.from_user.id), []
-                                        ) + [
-                                            round(div * 100, 2)
-                                        ]
+                                        new_dict2[str(message.from_user.id)] = (
+                                            new_dict2.get(str(message.from_user.id), [])
+                                            + [round(div * 100, 2)]
+                                        )
 
                                         games_db.upsert(
                                             {
@@ -702,7 +702,6 @@ def stop(message: Message):
                     parse_mode="Markdown",
                 )
         else:
-            # Send a message indicating that the command can only be used in a group chat
             bot.send_message(
                 message.chat.id,
                 "❌ Эту команду можно использовать только в групповом чате!",
@@ -741,13 +740,17 @@ def shutdown(message: Message):
 
 @bot.message_handler(content_types=["text"])
 def alternative_guess(message: Message):
-    if message.text.lower().startswith('guess') and (len(message.text) == 5 or message.text[5] == ' '):
-        message.text = '/' + message.text
+    if message.text.lower().startswith("guess") and (
+        len(message.text) == 5 or message.text[5] == " "
+    ):
+        message.text = "/" + message.text
         guess(message)
-    if message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id:
-        message.text = '/guess ' + message.text
+    elif (
+        message.reply_to_message
+        and message.reply_to_message.from_user.id == bot.get_me().id
+    ):
+        message.text = "/guess " + message.text
         guess(message)
-
 
 
 start_thread(f=from_queue_processing, logger=logger, delay=delay)
