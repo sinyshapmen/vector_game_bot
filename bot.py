@@ -3,6 +3,7 @@ import logging
 from models.embeddings import Embeddings
 from models.kandinsky import KandinskyClient
 from models.dalle import OpenaiClient
+from random import randint
 
 import telebot
 import re
@@ -73,11 +74,44 @@ for game in games_db.all():
     game = game["id"]
     bot.send_message(
         int(game),
-        "✨ *Спасибо за ожидание*. Вы можете продолжать играть",
+        "✨ *Спасибо за ожидание*. Вы можете продолжать играть.",
         parse_mode="Markdown",
     )
 
 print("bot started")
+
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_query(call: telebot.types.CallbackQuery):
+    if call.data.split(";")[0] == "model_change":
+        selected_model = (
+            "kandinsky" if call.data.split(";")[1] == "dall-e" else "dall-e"
+        )
+        bot.edit_message_text(
+            f"Чтобы загадать слово, нажми на кнопку ниже! 😁\nМодель: *{selected_model}*\nЦена игры: *{'1 токен' if selected_model == 'kandinsky' else '4 токена'}*",
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="Markdown",
+        )
+        bot.edit_message_reply_markup(
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            text="🧠 Загадать!",
+                            url=f"https://t.me/{bot_name}?start=pick{call.message.chat.id}_{selected_model}",
+                        ),
+                        InlineKeyboardButton(
+                            text="🔁 Сменить модель",
+                            callback_data=f"model_change;{selected_model}",
+                        ),
+                    ],
+                ]
+            ),
+        )
+        bot.answer_callback_query(call.id)
 
 
 def contains_only_english_letters(word):
@@ -104,7 +138,8 @@ def start(message: Message):
 
             bot.send_message(
                 message.chat.id,
-                "👋 Привет! Я - бот, с помощью которого можно загадывать слова, чтобы твои друзья их отгадывали. Я буду давать им подсказки и указывать, насколько они близки к правильному слову. Чтобы загадать слово, напиши в группе /play. (Играть надо на английском языке)",
+                "👋 *Привет!*\n\nЯ - бот, с помощью которого можно загадывать слова, чтобы твои друзья их отгадывали. Я буду давать им подсказки и указывать, насколько они близки к правильному слову.\n\nЧтобы *загадать слово*, напиши в группе /play. (Играть надо на английском языке)\n\nЧтобы *узнать больше об используемых моделях*, используй /models.",
+                parse_mode="Markdown",
             )
         else:
             # Check if the message is sent in a private chat
@@ -114,7 +149,9 @@ def start(message: Message):
 
                 if param.startswith("pick"):
                     # Extract the group ID from the parameter
-                    group_id = param[4:]
+                    group_id = param.split("_")[0][4:]
+                    selected_model = param.split("_")[1]
+
                     if group_id.startswith("-"):
                         # Check if a game is already in progress for the group ID
                         if games_db.search(User.id == str(group_id)):
@@ -126,11 +163,15 @@ def start(message: Message):
                             # Prompt the user to send a word to be guessed
                             answer_message = bot.send_message(
                                 message.chat.id,
-                                "Отправь мне слово, которое хочешь загадать! 😨",
+                                f"Отправь мне слово, которое хочешь загадать! 😨\nВыбранная модель: *{selected_model}*",
+                                parse_mode="Markdown",
                             )
                             # Register a handler for the next message to start word picking
                             bot.register_next_step_handler(
-                                answer_message, start_word_picking, int(group_id)
+                                answer_message,
+                                start_word_picking,
+                                int(group_id),
+                                selected_model,
                             )
                     else:
                         bot.send_message(
@@ -154,26 +195,33 @@ def start(message: Message):
 
 
 @bot.message_handler(commands=["play"])
-def play(message: Message):
+def play(message: Message, change_model=False):
     try:
         # Check if the message is in a private chat
         if not message.chat.type == "private":
             # Check if a game is already in progress for the chat
             if not games_db.search(User.id == str(message.chat.id)):
                 # Send a message with a button to start the game
+                selected_model = "kandinsky" if not change_model else "dall-e"
+
                 bot.send_message(
                     message.chat.id,
-                    "Чтобы загадать слово, нажми на кнопку ниже! 😁",
+                    f"Чтобы загадать слово, нажми на кнопку ниже! 😁\nМодель: *{selected_model}*\nЦена игры: *{'1 токен' if selected_model == 'kandinsky' else '4 токена'}*",
                     reply_markup=InlineKeyboardMarkup(
                         [
                             [
                                 InlineKeyboardButton(
-                                    text="Загадать!",
-                                    url=f"https://t.me/{bot_name}?start=pick{message.chat.id}",
-                                )
+                                    text="🧠 Загадать!",
+                                    url=f"https://t.me/{bot_name}?start=pick{message.chat.id}_{selected_model}",
+                                ),
+                                InlineKeyboardButton(
+                                    text="🔁 Сменить модель",
+                                    callback_data=f"model_change;{selected_model}",
+                                ),
                             ],
                         ]
                     ),
+                    parse_mode="Markdown",
                 )
             else:
                 # Send a message indicating that a game is already in progress
@@ -199,7 +247,9 @@ def play(message: Message):
 
 
 def from_queue_processing(request: tuple):
-    answer, group_id, dms_id, user_nick, message_queue_id, user_id = request
+    answer, group_id, dms_id, user_nick, message_queue_id, user_id, selected_model = (
+        request
+    )
 
     bot.delete_message(dms_id, message_queue_id)
 
@@ -213,9 +263,16 @@ def from_queue_processing(request: tuple):
         f'Картинка "*{answer}*" генерируется 😎',
         parse_mode="Markdown",
     )
-    status, generated_photo_bytes = kandinsky_client.generate_image(answer)
+    status, generated_photo_bytes = (
+        kandinsky_client.generate_image(answer)
+        if selected_model == "kandinsky"
+        else dalle_client.generate_image(answer)
+    )
 
     if status == 200:
+
+        # вот тут должны списываться токены
+
         sent_image = bot.send_photo(
             group_id,
             generated_photo_bytes,
@@ -253,7 +310,7 @@ def from_queue_processing(request: tuple):
         )
 
 
-def start_word_picking(message: Message, group_id: int):
+def start_word_picking(message: Message, group_id: int, selected_model):
     try:
         # Check if a game is already in progress
         if games_db.search(User.id == str(group_id)):
@@ -297,6 +354,7 @@ def start_word_picking(message: Message, group_id: int):
                             queue_message.id,
                             message.from_user.id,
                             logger,
+                            selected_model,  # model user selected
                         )
 
                     else:
@@ -736,6 +794,26 @@ def shutdown(message: Message):
             f"✅ Сообщения отправились успешно!",
         )
         bot.stop_bot()
+
+
+@bot.message_handler(commands=["models"])
+def models(message: Message):
+    try:
+        photo = open(f"pics/kd{randint(1, 2)}.jpg", "rb")
+        bot.send_photo(
+            message.chat.id,
+            photo,
+            """*Разница между DALL-E 3 и Kandinsky*\n\n*DALL-E 3* - это нейросеть, разработанная OpenAI.\n*Kandinsky* - это в свою очередь нейросеть от "Сбера".\nОбе нейросети способны генерировать изображения на основе текстового описания. *DALL-E 3* может создавать более сложные и уникальные изображения, превосходящие возможности обычного рисования или графического дизайна. *Kandinsky* в то время генерирует похожие друг на друга и несложные изображения.""",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        # Send a message indicating that an error occurred
+        bot.send_message(
+            message.chat.id,
+            f"⛔ Возникла ошибка, пожалуйста, сообщите об этом @FoxFil\n\nОшибка:\n\n`{e}`",
+            parse_mode="Markdown",
+        )
+        logger.error(f"ERROR: {e}")
 
 
 @bot.message_handler(content_types=["text"])
