@@ -103,12 +103,14 @@ def handle_query(call: telebot.types.CallbackQuery):
                             text="🧠 Загадать!",
                             url=f"https://t.me/{bot_name}?start=pick{call.message.chat.id}_{selected_model}",
                         ),
+                    ],
+                    [
                         InlineKeyboardButton(
                             text="🔁 Сменить модель",
                             callback_data=f"model_change;{selected_model}",
                         ),
                     ],
-                ]
+                ],
             ),
         )
         bot.answer_callback_query(call.id)
@@ -214,12 +216,14 @@ def play(message: Message, change_model=False):
                                     text="🧠 Загадать!",
                                     url=f"https://t.me/{bot_name}?start=pick{message.chat.id}_{selected_model}",
                                 ),
+                            ],
+                            [
                                 InlineKeyboardButton(
                                     text="🔁 Сменить модель",
                                     callback_data=f"model_change;{selected_model}",
                                 ),
                             ],
-                        ]
+                        ],
                     ),
                     parse_mode="Markdown",
                 )
