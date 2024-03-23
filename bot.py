@@ -114,6 +114,12 @@ def handle_query(call: telebot.types.CallbackQuery):
             ),
         )
         bot.answer_callback_query(call.id)
+    elif call.data.split(";")[0] == "play":
+        bot.answer_callback_query(call.id)
+        play(call.message)
+    elif call.data.split(";")[0] == "about_models":
+        bot.answer_callback_query(call.id)
+        models(call.message)
 
 
 def contains_only_english_letters(word):
@@ -140,8 +146,24 @@ def start(message: Message):
 
             bot.send_message(
                 message.chat.id,
-                "👋 *Привет!*\n\nЯ - бот, с помощью которого можно загадывать слова, чтобы твои друзья их отгадывали. Я буду давать им подсказки и указывать, насколько они близки к правильному слову.\n\nЧтобы *загадать слово*, напиши в группе /play. (Играть надо на английском языке)\n\nЧтобы *узнать больше об используемых моделях*, используй /models.",
+                "👋 *Привет!*\n\nЯ - бот, с помощью которого можно загадывать слова, чтобы твои друзья отгадывали их по сгенерированной нейросетью картинке. Я буду давать им подсказки и указывать, насколько они близки к правильному ответу.\nВ игру пока что можно играть только на английском языке.",
                 parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                text="🎮 Играть!",
+                                callback_data="play",
+                            ),
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="📌 О моделях",
+                                callback_data=f"about_models",
+                            ),
+                        ],
+                    ],
+                ),
             )
         else:
             # Check if the message is sent in a private chat
@@ -280,7 +302,7 @@ def from_queue_processing(request: tuple):
         sent_image = bot.send_photo(
             group_id,
             generated_photo_bytes,
-            f"Пользователь *{user_nick}* загадал слово!\nПишите свои ответы в формате `/guess ответ`,  `guess ответ` или просто отвечай на сообщения бота в этом чате!\nЧтобы остановить игру, напиши `/stop`.",
+            f"Пользователь *{user_nick}* загадал слово!\nПишите свои догадки в формате `/guess ответ`,  `guess ответ` или просто отвечайте на сообщения бота в этом чате!\nЧтобы посмотреть топ слов, используйте `/top кол-во` (по умолчанию 5).\nЧтобы остановить игру, напишите `/stop`.",
             parse_mode="Markdown",
         )
         bot.delete_message(dms_id, image_generation.message_id)
@@ -477,12 +499,32 @@ def guess(message: Message):
                                             group_id,
                                             f"🎉 *{message.from_user.full_name}*, молодец! Ты отгадал слово *{correct_answer}* с первой попытки! Вот это мастерство! 🤯",
                                             parse_mode="Markdown",
+                                            reply_markup=InlineKeyboardMarkup(
+                                                [
+                                                    [
+                                                        InlineKeyboardButton(
+                                                            text="🎮 Играть снова!",
+                                                            callback_data="play",
+                                                        ),
+                                                    ],
+                                                ],
+                                            ),
                                         )
                                     else:
                                         bot.send_message(
                                             group_id,
-                                            f"🎉 *{message.from_user.full_name}* отгадал слово *{correct_answer}*! Игра заканчивается.",
+                                            f"🎉 *{message.from_user.full_name}* отгадал слово *{correct_answer}*!",
                                             parse_mode="Markdown",
+                                            reply_markup=InlineKeyboardMarkup(
+                                                [
+                                                    [
+                                                        InlineKeyboardButton(
+                                                            text="🎮 Играть снова!",
+                                                            callback_data="play",
+                                                        ),
+                                                    ],
+                                                ],
+                                            ),
                                         )
                                     if games_db.search(User.id == str(group_id)):
                                         games_db.remove(
