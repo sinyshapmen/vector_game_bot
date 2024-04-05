@@ -81,45 +81,126 @@ for game in games_db.all():
 print("bot started")
 
 
-@bot.callback_query_handler(func=lambda call: True)
+@bot.callback_query_handler(func=lambda x: True)
 def handle_query(call: telebot.types.CallbackQuery):
-    if call.data.split(";")[0] == "model_change":
-        selected_model = (
-            "kandinsky" if call.data.split(";")[1] == "dall-e" else "dall-e"
-        )
-        bot.edit_message_text(
-            f"Чтобы загадать слово, нажми на кнопку ниже! 😁\nМодель: *{selected_model}*\nЦена игры: *{'1 токен' if selected_model == 'kandinsky' else '4 токена'}*",
-            call.message.chat.id,
-            call.message.message_id,
-            parse_mode="Markdown",
-        )
-        bot.edit_message_reply_markup(
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=InlineKeyboardMarkup(
-                [
+    match call.data.split(";")[0]:
+        case "model_change":
+            selected_model = (
+                "kandinsky" if call.data.split(";")[1] == "dall-e" else "dall-e"
+            )
+            bot.edit_message_text(
+                f"Чтобы загадать слово, нажми на кнопку ниже! 😁\nМодель: *{selected_model}*\nЦена игры: *{'1 токен' if selected_model == 'kandinsky' else '4 токена'}*",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode="Markdown",
+            )
+            bot.edit_message_reply_markup(
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=InlineKeyboardMarkup(
                     [
-                        InlineKeyboardButton(
-                            text="🧠 Загадать!",
-                            url=f"https://t.me/{bot_name}?start=pick{call.message.chat.id}_{selected_model}",
-                        ),
+                        [
+                            InlineKeyboardButton(
+                                text="🧠 Загадать!",
+                                url=f"https://t.me/{bot_name}?start=pick{call.message.chat.id}_{selected_model}",
+                            ),
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="🔁 Сменить модель",
+                                callback_data=f"model_change;{selected_model}",
+                            ),
+                        ],
                     ],
+                ),
+            )
+            bot.answer_callback_query(call.id)
+        case "play":
+            bot.answer_callback_query(call.id)
+            play(call.message)
+        case "about_models":
+            bot.answer_callback_query(call.id)
+            models(call.message)
+        case "add_balance":
+            bot.edit_message_text(
+                f"👑 Чтобы купить токены, нажми на какую-то из кнопок ниже.\n\n😁 При покупке большого количества токенов за раз присутствует скидка!",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode="Markdown",
+            )
+
+            bot.edit_message_reply_markup(
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=InlineKeyboardMarkup(
                     [
-                        InlineKeyboardButton(
-                            text="🔁 Сменить модель",
-                            callback_data=f"model_change;{selected_model}",
-                        ),
+                        [
+                            InlineKeyboardButton(
+                                text="💳 50 токенов (100 р.)",
+                                url=f"https://foxfil.xyz",
+                            ),
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="💳 100 токенов (200 р.)",
+                                url=f"https://foxfil.xyz",
+                            ),
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="💳 500 токенов (900 р.)",
+                                url=f"https://foxfil.xyz",
+                            ),
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="💳 1000 токенов (1800 р.)",
+                                url=f"https://foxfil.xyz",
+                            ),
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="💳 5000 токенов (9500 р.)",
+                                url=f"https://foxfil.xyz",
+                            ),
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="⬅️ Назад",
+                                callback_data="back_to_balance",
+                            ),
+                        ],
                     ],
-                ],
-            ),
-        )
-        bot.answer_callback_query(call.id)
-    elif call.data.split(";")[0] == "play":
-        bot.answer_callback_query(call.id)
-        play(call.message)
-    elif call.data.split(";")[0] == "about_models":
-        bot.answer_callback_query(call.id)
-        models(call.message)
+                ),
+            )
+
+            bot.answer_callback_query(call.id)
+        case "back_to_balance":
+
+            tokens = 1  # тут надо тоже получать токены
+
+            bot.edit_message_text(
+                f"💰 Ваш баланс: *{tokens}* {get_str_token(tokens)}.",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode="Markdown",
+            )
+
+            bot.edit_message_reply_markup(
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                text="➕ Пополнить баланс", callback_data="add_balance"
+                            ),
+                        ],
+                    ],
+                ),
+            )
+
+            bot.answer_callback_query(call.id)
 
 
 def contains_only_english_letters(word):
@@ -221,11 +302,8 @@ def start(message: Message):
 @bot.message_handler(commands=["play"])
 def play(message: Message, change_model=False):
     try:
-        # Check if the message is in a private chat
         if not message.chat.type == "private":
-            # Check if a game is already in progress for the chat
             if not games_db.search(User.id == str(message.chat.id)):
-                # Send a message with a button to start the game
                 selected_model = "kandinsky" if not change_model else "dall-e"
 
                 bot.send_message(
@@ -302,7 +380,7 @@ def from_queue_processing(request: tuple):
         sent_image = bot.send_photo(
             group_id,
             generated_photo_bytes,
-            f"Пользователь *{user_nick}* загадал слово!\nПишите свои догадки в формате `/guess ответ`,  `guess ответ` или просто отвечайте на сообщения бота в этом чате!\nЧтобы посмотреть топ слов, используйте `/top кол-во` (по умолчанию 5).\nЧтобы остановить игру, напишите `/stop`.",
+            f"Пользователь *{user_nick}* загадал слово!\n\nПишите свои догадки в формате `/guess ответ`, `guess ответ` или просто отвечайте на сообщения бота в этом чате!\n\nЧтобы посмотреть топ слов, используйте `/top кол-во` (по умолчанию 5).\n\nЧтобы остановить игру, напишите `/stop`.",
             parse_mode="Markdown",
         )
         bot.delete_message(dms_id, image_generation.message_id)
@@ -860,6 +938,42 @@ def models(message: Message):
             parse_mode="Markdown",
         )
         logger.error(f"ERROR: {e}")
+
+
+def get_str_token(n):
+    if n % 10 == 1 and n % 100 != 11:
+        return "токен"
+    elif n % 10 >= 2 and n % 10 <= 4 and (n % 100 < 10 or n % 100 >= 20):
+        return "токена"
+    else:
+        return "токенов"
+
+
+@bot.message_handler(commands=["balance"])
+def balance(message: Message):
+    if message.chat.type == "private":
+
+        tokens = 1  # тут надо получать из базы токены
+
+        bot.send_message(
+            message.chat.id,
+            f"💰 Ваш баланс: *{tokens}* {get_str_token(tokens)}",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            text="➕ Пополнить баланс", callback_data="add_balance"
+                        ),
+                    ],
+                ],
+            ),
+            parse_mode="Markdown",
+        )
+    else:
+        bot.send_message(
+            message.chat.id,
+            "❌ Эту команду можно использовать только в личных сообщениях!",
+        )
 
 
 @bot.message_handler(content_types=["text"])
