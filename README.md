@@ -9,4 +9,4 @@
 Это делается с помощью разбиения слов на вектора, а затем сравнение этих векторов с помощью определенной модели.
 
 ### 🧡 Создатели
-[UltraGeoPro](https://github.com/Ultrageopro1966) и [FoxFil](https://github.com/FoxFil) :)
+[FoxFil](https://github.com/FoxFil), [UltraGeoPro](https://github.com/Ultrageopro1966) и [sinyshapmen](https://github.com/sinyshapmen) :)
